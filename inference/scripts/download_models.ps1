@@ -11,12 +11,13 @@ $RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 $ModelsDir = Join-Path $RootDir "models"
 
 $CheckpointsDir = Join-Path $ModelsDir "checkpoints"
+$UnetDir        = Join-Path $ModelsDir "unet"
 $ClipDir        = Join-Path $ModelsDir "clip"
 $VaeDir         = Join-Path $ModelsDir "vae"
 $PulidDir       = Join-Path $ModelsDir "pulid"
 
 # Ensure target directories exist
-New-Item -ItemType Directory -Force -Path $CheckpointsDir, $ClipDir, $VaeDir, $PulidDir | Out-Null
+New-Item -ItemType Directory -Force -Path $CheckpointsDir, $UnetDir, $ClipDir, $VaeDir, $PulidDir | Out-Null
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host " instaXoom: Downloading Flux.1 Models for 8GB RTX 4060 " -ForegroundColor Cyan
@@ -79,7 +80,7 @@ Download-ModelFile `
 Download-ModelFile `
     -Name "Flux.1 Schnell Q4_K_S (flux1-schnell-Q4_K_S.gguf)" `
     -Url "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_K_S.gguf" `
-    -DestinationPath (Join-Path $CheckpointsDir "flux1-schnell-Q4_K_S.gguf") `
+    -DestinationPath (Join-Path $UnetDir "flux1-schnell-Q4_K_S.gguf") `
     -ApproxSize "6.31 GB"
 
 Write-Host "`n========================================================" -ForegroundColor Cyan

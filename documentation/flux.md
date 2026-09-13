@@ -8,9 +8,9 @@ This document covers the **FLUX.1** generative model setup, low-VRAM optimizatio
 
 - **Architecture:** Flow Transformer (12 Billion parameters)
 - **Base Precision:** FP16 (~24GB+ VRAM required natively)
-- **Quantization:** **NF4 (BitsAndBytes)** or **GGUF Q4_K_S** (~11GB file size)
+- **Quantization:** **GGUF Q4_K_S** (~6.32 GB file size, loaded via `ComfyUI-GGUF`)
 - **Sampling Steps:** **4 steps** (schnell is distilled for rapid 4-step convergence)
-- **Inference Speed:** ~12–20 seconds per generation on an **NVIDIA RTX 4060 (8GB)**.
+- **Inference Speed:** ~15 seconds per generation (sampling) on an **NVIDIA RTX 4060 (8GB)**.
 - **License:** **Apache 2.0** (permissive open source, commercial use permitted).
 
 ---
@@ -27,7 +27,8 @@ To achieve accurate facial likeness in trend portraits without retraining the mo
             │
             ▼
 [ Face Vector Pooling ] ──────────► Computes normalized average across all vectors
-            │                        (Eliminates bad angles, lighting, and shadows)
+                               (Eliminates bad angles, lighting, and shadows)
+            │
             ▼
 [ Flux Cross-Attention Injection ] ─► Conditioned image output with true resemblance
 ```
@@ -43,9 +44,10 @@ To achieve accurate facial likeness in trend portraits without retraining the mo
 
 To avoid CUDA Out-Of-Memory (OOM) errors on an RTX 4060:
 
-1. **Quantized Checkpoint:** Use `flux1-schnell-bnb-nf4.safetensors` loaded via ComfyUI.
-2. **Text Encoder Offload:** Text encoding requires CLIP-L and T5-XXL. We use `t5xxl_fp8_e4m3fn.safetensors`. ComfyUI keeps T5 in VRAM only during text encoding and offloads it before loading the transformer blocks.
-3. **Launch Flags:**
+1. **GGUF Quantized UNet:** Use `flux1-schnell-Q4_K_S.gguf` loaded via `ComfyUI-GGUF` (`models/unet/` or `models/checkpoints/`).
+2. **Text Encoder Offload:** Text encoding uses CLIP-L and T5-XXL FP8 (`t5xxl_fp8_e4m3fn.safetensors`). ComfyUI offloads T5 from GPU VRAM to system RAM during sampling, preserving ~4.5GB VRAM for the UNet.
+3. **Dedicated VAE:** Loads `ae.safetensors` via `VAELoader`.
+4. **Launch Flags:**
    ```bash
    python main.py --listen 0.0.0.0 --port 8188 --lowvram --disable-cuda-malloc
    ```
@@ -55,8 +57,22 @@ To avoid CUDA Out-Of-Memory (OOM) errors on an RTX 4060:
 ## 4. ComfyUI Workflow Graph
 
 The API workflow is stored at `inference/workflows/daily_trend_flux_img2img.json` and consists of:
-- **Node 4 (CheckpointLoaderSimple):** Loads Flux.1 Schnell NF4.
-- **Node 5 (EmptyLatentImage):** Configured for the standard Instagram 4:5 portrait ratio (864 × 1080).
-- **Node 6 & 7 (CLIPTextEncode):** Positive trend prompt and negative prompt.
-- **Node 3 (KSampler):** 4 steps, CFG 1.0, Euler sampler, simple scheduler.
-- **Node 8 & 9 (VAEDecode & SaveImage):** Decodes latents to high-resolution JPEG and saves to shared output volume.
+- **Node 1 (UnetLoaderGGUF):** Loads `flux1-schnell-Q4_K_S.gguf`.
+- **Node 2 (DualCLIPLoader):** Loads `t5xxl_fp8_e4m3fn.safetensors` and `clip_l.safetensors` (type: flux).
+- **Node 3 (VAELoader):** Loads `ae.safetensors`.
+- **Node 4 (EmptyLatentImage):** Configured for standard Instagram 4:5 portrait ratio (864 × 1080).
+- **Node 5 & 6 (CLIPTextEncode):** Positive trend prompt and negative prompt.
+- **Node 7 (KSampler):** 4 steps, CFG 1.0, Euler sampler, simple scheduler.
+- **Node 8 (VAEDecode):** Decodes latent representation with VAE.
+- **Node 9 (SaveImage):** Outputs high-resolution image to shared output volume.
+
+---
+
+## 5. Testing & Verification
+
+A verification client is provided at `inference/scripts/test_generate.py` to queue a generation job against headless ComfyUI and save the rendered output:
+
+```bash
+python inference/scripts/test_generate.py
+```
+This tests the full pipeline (GGUF load, text encoding, 4-step diffusion, VAE decode) and outputs `test_output_4x5.png`.

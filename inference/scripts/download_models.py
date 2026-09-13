@@ -12,11 +12,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 MODELS_DIR = BASE_DIR / "models"
 
 CHECKPOINTS_DIR = MODELS_DIR / "checkpoints"
+UNET_DIR = MODELS_DIR / "unet"
 CLIP_DIR = MODELS_DIR / "clip"
 VAE_DIR = MODELS_DIR / "vae"
 PULID_DIR = MODELS_DIR / "pulid"
 
-for d in [CHECKPOINTS_DIR, CLIP_DIR, VAE_DIR, PULID_DIR]:
+for d in [CHECKPOINTS_DIR, UNET_DIR, CLIP_DIR, VAE_DIR, PULID_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 MODELS = [
@@ -38,7 +39,7 @@ MODELS = [
     {
         "name": "Flux.1 Schnell Q4_K_S GGUF (flux1-schnell-Q4_K_S.gguf)",
         "url": "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_K_S.gguf",
-        "path": CHECKPOINTS_DIR / "flux1-schnell-Q4_K_S.gguf",
+        "path": UNET_DIR / "flux1-schnell-Q4_K_S.gguf",
     },
 ]
 
