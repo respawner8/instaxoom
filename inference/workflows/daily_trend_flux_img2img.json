@@ -1,26 +1,25 @@
 {
+  "1": {
+    "inputs": {
+      "unet_name": "flux1-schnell-Q4_K_S.gguf"
+    },
+    "class_type": "UnetLoaderGGUF"
+  },
+  "2": {
+    "inputs": {
+      "clip_name1": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    },
+    "class_type": "DualCLIPLoader"
+  },
   "3": {
     "inputs": {
-      "seed": 42,
-      "steps": 4,
-      "cfg": 1.0,
-      "sampler_name": "euler",
-      "scheduler": "simple",
-      "denoise": 1.0,
-      "model": ["4", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "latent_image": ["5", 0]
+      "vae_name": "ae.safetensors"
     },
-    "class_type": "KSampler"
+    "class_type": "VAELoader"
   },
   "4": {
-    "inputs": {
-      "ckpt_name": "flux1-schnell-bnb-nf4.safetensors"
-    },
-    "class_type": "CheckpointLoaderSimple"
-  },
-  "5": {
     "inputs": {
       "width": 864,
       "height": 1080,
@@ -28,30 +27,45 @@
     },
     "class_type": "EmptyLatentImage"
   },
+  "5": {
+    "inputs": {
+      "text": "1990s high school yearbook photo, 35mm film photography, soft flash lighting, slightly faded colors, textured blue studio backdrop, smiling high school student, authentic 90s fashion and hairstyle",
+      "clip": ["2", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
   "6": {
     "inputs": {
-      "text": "1990s high school yearbook photo, 35mm film photography, soft flash lighting, slightly faded colors, textured blue studio backdrop, high school senior smiling, authentic 90s fashion and hairstyle",
-      "clip": ["4", 1]
+      "text": "blurry, low quality, distorted face, bad anatomy, modern smartphone photo, deformed",
+      "clip": ["2", 0]
     },
     "class_type": "CLIPTextEncode"
   },
   "7": {
     "inputs": {
-      "text": "blurry, low quality, distorted face, bad anatomy, modern smartphone photo",
-      "clip": ["4", 1]
+      "seed": 42,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["1", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["4", 0]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "KSampler"
   },
   "8": {
     "inputs": {
-      "samples": ["3", 0],
-      "vae": ["4", 2]
+      "samples": ["7", 0],
+      "vae": ["3", 0]
     },
     "class_type": "VAEDecode"
   },
   "9": {
     "inputs": {
-      "filename_prefix": "instaXoom_trend",
+      "filename_prefix": "instaXoom_trend_4x5",
       "images": ["8", 0]
     },
     "class_type": "SaveImage"

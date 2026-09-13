@@ -30,9 +30,16 @@ RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://
 # Install ComfyUI requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install dependencies for Flux & PuLID / InsightFace
+# Patch comfy_kitchen type annotations for PyTorch 2.5 compatibility
+COPY scripts/patch_comfy_kitchen.py /tmp/patch_comfy_kitchen.py
+RUN python3 /tmp/patch_comfy_kitchen.py && rm /tmp/patch_comfy_kitchen.py
+
+# Install dependencies for Flux, GGUF & PuLID / InsightFace
 RUN pip install --no-cache-dir \
     huggingface-hub \
+    gguf \
+    sentencepiece \
+    protobuf \
     onnxruntime-gpu \
     insightface \
     facexlib

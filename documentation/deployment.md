@@ -31,9 +31,9 @@ This guide documents platform-specific configurations, GPU orchestration, Docker
 - **The Rule:** Always mount model weights as host directories via Docker volumes:
   ```yaml
   volumes:
-    - ./models/checkpoints:/app/ComfyUI/models/checkpoints
-    - ./models/clip:/app/ComfyUI/models/clip
-    - ./models/pulid:/app/ComfyUI/models/pulid
+    - ./models:/app/ComfyUI/models
+    - shared_uploads:/app/ComfyUI/input
+    - shared_outputs:/app/ComfyUI/output
   ```
 
 ### Gotcha #2: GPU Passthrough Differences (Windows WSL2 vs. Linux/Azure)
@@ -60,23 +60,34 @@ This guide documents platform-specific configurations, GPU orchestration, Docker
   sudo systemctl restart docker
   ```
 
+### Gotcha #3: PyTorch 2.5 vs. `comfy-kitchen` Typing Annotations
+- In PyTorch 2.5+, `torch.library.custom_op` strictly rejects Python 3.9 type annotations formatted as `list[int]` inside custom kernel registrations (`na.py` and `sol_attn.py` in `comfy-kitchen`).
+- **Fix:** We include `inference/scripts/patch_comfy_kitchen.py` which converts `list[int]` to `typing.List[int]`. This runs automatically during `docker build` in `inference/Dockerfile`.
+
 ---
 
 ## 3. Local RTX 4060 (8GB VRAM) Optimization Rules
 
-Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision, it requires ~24GB+ of VRAM. To run it reliably on an 8GB RTX 4060 alongside face conditioning:
+Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision, it requires ~24GB+ of VRAM. To run it reliably on an 8GB RTX 4060:
 
-1. **Model Format:** Use **Flux.1 [schnell] NF4** or **GGUF Q4_K_S / Q4_0**.
-   - Flux.1 `schnell` requires only **4 steps** of diffusion, generating an image in 12–20 seconds on an RTX 4060.
-2. **Text Encoder Offload:** Use `t5xxl_fp8_e4m3fn.safetensors` instead of FP16 T5. ComfyUI automatically frees T5 from VRAM once the text conditioning phase completes before loading the diffusion transformer.
-3. **Face Conditioning (Image-to-Image Likeness):**
-   - Use **PuLID for Flux** or **InstantID**.
-   - When a user uploads 1 to 5 images, face embedding pooling is performed on the CPU / lightweight InsightFace node before passing the merged vector into the model.
-4. **ComfyUI Launch Flags:**
+1. **Model Format:** Use **Flux.1 [schnell] GGUF Q4_K_S** (`flux1-schnell-Q4_K_S.gguf`, ~6.32 GB).
+   - Distilled for **4 steps** of diffusion, generating an image in ~15 seconds on an RTX 4060.
+2. **Text Encoders & VAE:**
+   - Text encoder: `t5xxl_fp8_e4m3fn.safetensors` (~4.56 GB) + `clip_l.safetensors` (~230 MB).
+   - VAE: `ae.safetensors` (~335 MB).
+   - ComfyUI automatically offloads T5 from GPU VRAM to system RAM during sampling.
+3. **Launch Flags:**
    ```bash
    python main.py --listen 0.0.0.0 --port 8188 --lowvram --disable-cuda-malloc
    ```
-   `--lowvram` forces dynamic unloading of idle submodules to system RAM, preventing CUDA Out-Of-Memory (OOM) errors.
+   `--lowvram` dynamically manages submodules between GPU VRAM and system RAM, preventing CUDA Out-Of-Memory (OOM) errors.
+
+4. **Inference Verification:**
+   Verify the inference container standalone before running the full stack:
+   ```bash
+   python inference/scripts/test_generate.py
+   ```
+   Outputs an authentic Instagram 4:5 portrait (`test_output_4x5.png`, 864×1080).
 
 ---
 
