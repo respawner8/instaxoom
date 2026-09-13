@@ -64,36 +64,39 @@ Submits 1 to 5 user photos, verifies rate limits, and triggers the ComfyUI infer
 **Response (HTTP 200):**
 ```json
 {
-  "status": "queued",
-  "job_id": "8f3b23c9-d23b-4f91-88f1-c5de736a4392",
+  "status": "completed",
+  "job_id": "053fbd29-151d-4cc7-8f51-ee3117c00fb7",
+  "prompt_id": "13e915f7-bb7c-4bdd-852f-0f4d1a7011d3",
   "trend_id": "trend-retro-90s-yearbook",
   "aspect_ratio": "4:5",
   "dimensions": {"width": 864, "height": 1080},
-  "photos_received": 3,
+  "photos_received": 1,
+  "image_url": "/api/trends/outputs/instaXoom_trend_4x5_00002_.png",
   "quota": {
-    "remaining_generations": 2,
-    "reset_in_seconds": 86340
+    "remaining_generations": 999,
+    "reset_in_seconds": 86400,
+    "rate_limit_enabled": false
   },
-  "estimated_duration_seconds": 15
+  "message": "Successfully generated 4:5 Instagram trend portrait."
 }
 ```
 
 ---
 
-## 3. Unauthenticated Rate Limiting Logic
+### `GET /api/trends/outputs/{filename}`
+Serves the rendered 4:5 Instagram image file directly from the mounted volume with proxy fallback to ComfyUI. Supports `GET` and `HEAD` requests.
 
-To enable guest usage while preventing API abuse:
-1. **Client Identification:** The system inspects `X-Client-Token` (UUID stored in the user's browser) with a fallback to `X-Forwarded-For` / client IP.
-2. **Sliding Window with Redis:**
-   - Keys are formatted as `rate_limit:unauth:{client_id}`.
-   - On the first request, Redis stores count `1` with a TTL of `86400` seconds (24 hours).
-   - Subsequent requests increment the counter until the daily limit (default: 3) is hit.
-   - Once exhausted, the API returns `HTTP 429 Too Many Requests` with the remaining seconds until reset.
+---
+
+## 3. Rate Limiting Logic
+
+- **Local Development:** Rate limiting is bypassed to allow unlimited iterations while testing.
+- **Production (Azure):** Sliding window token bucket using Redis key TTLs (`rate_limit:unauth:{client_id}`) granting 3 free generations/day before returning `HTTP 429 Too Many Requests`.
 
 ---
 
 ## 4. ComfyUI Client (`comfy_client.py`)
 
-- **Prompt Submission:** Converts trend parameters and uploaded user photos into ComfyUI graph syntax and posts to `http://inference:8188/prompt`.
-- **WebSocket Tracking:** Listens to `ws://inference:8188/ws` for real-time node execution progress.
-- **Output Fetching:** Retrieves the rendered image filename and exposes it via public CDN or MinIO storage.
+- **Prompt Submission:** Converts trend parameters into ComfyUI GGUF graph syntax and posts to `http://inference:8188/prompt`.
+- **WebSocket & Polling Tracking:** Tracks node execution progress via WebSockets with an automatic polling fallback on `/history/{prompt_id}`.
+- **Output Fetching:** Parses node output filenames from history and serves them via `/api/trends/outputs/{filename}`.
