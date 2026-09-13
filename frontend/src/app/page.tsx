@@ -3,27 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { Sparkles, Upload, Instagram, Share2, Download, CheckCircle2, Flame, RefreshCw, Layers } from "lucide-react";
 
-interface AspectRatioOption {
-  label: string;
-  value: string;
-  desc: string;
-}
-
 export default function Home() {
-  const [selectedRatio, setSelectedRatio] = useState<string>("4:5");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [remainingQuota, setRemainingQuota] = useState<number>(3);
-
-  // Aspect ratio presets tailored for Instagram
-  const aspectRatios: AspectRatioOption[] = [
-    { label: "Feed Portrait", value: "4:5", desc: "1080 × 1350 (Max screen area)" },
-    { label: "Story / Reel", value: "9:16", desc: "1080 × 1920 (Full screen)" },
-    { label: "Square Post", value: "1:1", desc: "1080 × 1080 (Classic)" },
-  ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -54,7 +40,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       uploadedFiles.forEach((file) => formData.append("photos", file));
-      formData.append("aspect_ratio", selectedRatio);
+      formData.append("aspect_ratio", "4:5");
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/api/trends/generate`, {
@@ -195,27 +181,24 @@ export default function Home() {
             )}
           </div>
 
-          {/* Step 2: Aspect Ratio Selection */}
+          {/* Step 2: Instagram Format (Locked to 4:5) */}
           <div className="mb-8">
             <label className="block text-sm font-semibold text-neutral-200 mb-3">
               2. Instagram Format
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {aspectRatios.map((ratio) => (
-                <button
-                  key={ratio.value}
-                  type="button"
-                  onClick={() => setSelectedRatio(ratio.value)}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
-                    selectedRatio === ratio.value
-                      ? "border-rose-500 bg-rose-500/10 text-white shadow-lg shadow-rose-500/10"
-                      : "border-neutral-800 bg-neutral-950/40 text-neutral-400 hover:border-neutral-700"
-                  }`}
-                >
-                  <div className="font-semibold text-sm mb-1">{ratio.label}</div>
-                  <div className="text-xs opacity-70">{ratio.desc}</div>
-                </button>
-              ))}
+            <div className="p-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 text-white flex items-center justify-between shadow-lg shadow-rose-500/5">
+              <div>
+                <div className="font-semibold text-sm flex items-center gap-2">
+                  <span>Feed Portrait (4:5)</span>
+                  <span className="px-2 py-0.5 text-[11px] rounded-full bg-rose-500/20 text-rose-300 font-medium">Standard</span>
+                </div>
+                <div className="text-xs text-neutral-400 mt-0.5">
+                  1080 × 1350 &bull; Maximizes mobile screen area in the Instagram feed
+                </div>
+              </div>
+              <div className="h-9 w-7 rounded border border-rose-400/40 bg-rose-500/20 flex items-center justify-center text-[10px] font-mono text-rose-200">
+                4:5
+              </div>
             </div>
           </div>
 
@@ -251,15 +234,7 @@ export default function Home() {
                 <span>Trend Portrait Ready!</span>
               </div>
 
-              <div
-                className={`overflow-hidden rounded-2xl border border-neutral-800 shadow-2xl relative bg-black ${
-                  selectedRatio === "4:5"
-                    ? "w-[300px] h-[375px]"
-                    : selectedRatio === "9:16"
-                    ? "w-[260px] h-[462px]"
-                    : "w-[320px] h-[320px]"
-                }`}
-              >
+              <div className="overflow-hidden rounded-2xl border border-neutral-800 shadow-2xl relative bg-black w-[300px] h-[375px]">
                 <img
                   src={generatedImage}
                   alt="Generated Instagram Trend"

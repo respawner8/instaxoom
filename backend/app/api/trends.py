@@ -19,9 +19,7 @@ TODAY_TREND = {
     "title": "90s Retro High School Yearbook",
     "tagline": "Transform your portrait into an authentic 1994 vintage yearbook portrait with authentic film grain and classic blue studio backdrop.",
     "aspect_ratios": [
-        {"label": "Instagram Feed (4:5)", "value": "4:5", "width": 864, "height": 1080},
-        {"label": "Stories / Reels (9:16)", "value": "9:16", "width": 768, "height": 1344},
-        {"label": "Square (1:1)", "value": "1:1", "width": 1024, "height": 1024},
+        {"label": "Instagram Feed (4:5)", "value": "4:5", "width": 864, "height": 1080}
     ],
     "default_aspect_ratio": "4:5",
     "hashtags": ["#90sYearbook", "#VintageAesthetic", "#instaXoom", "#RetroPortraits"],

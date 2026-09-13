@@ -1,4 +1,4 @@
-# instaXoom: Deployment & Platform Architecture Guide
+# Deployment & Platform Architecture Guide
 
 This guide documents platform-specific configurations, GPU orchestration, Docker setup, and critical gotchas when deploying **instaXoom** across local machines and cloud environments.
 
@@ -80,25 +80,24 @@ Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision
 
 ---
 
-## 4. Azure Deployment & $150 Free Credit Strategy
+## 4. Azure Deployment
 
 ### 1. Azure GPU VM Instance Selection
 - **Recommended VM:** `Standard_NC4as_T4_v3` (1x NVIDIA Tesla T4, 16GB VRAM, 4 vCPUs, 28GB RAM) or `Standard_NV4as_v4` / `Standard_NC6s_v3`.
 - **Hourly Cost:** Roughly $0.50 – $0.90 per hour.
-- **Credit Lifespan:** Your $150 credit provides approximately **150 to 300 hours** of active VM run time.
 
 ### 2. Critical Azure Caveat: GPU Core Quotas
-- New Azure subscriptions (especially free tier / credit accounts) start with a default **quota of 0 GPU vCPUs**.
+- New Azure subscriptions start with a default **quota of 0 GPU vCPUs**.
 - **Action Required Before Deploying:**
   1. Go to **Azure Portal** $\rightarrow$ **Subscriptions** $\rightarrow$ **Usage + quotas**.
-  2. Filter by your region (e.g., *East US* or *West US 2*).
+  2. Filter by your target region (e.g., *East US* or *West US 2*).
   3. Search for `Standard NCasT4_v3 Family vCPUs` or `Standard NVSv4 Family`.
   4. Submit a **Request Quota Increase** to at least 4 vCPUs.
 
-### 3. Idle Cost Protection (Do not waste credits!)
+### 3. Idle Cost Protection
 - Compute charges accrue as long as the VM is in `Running` state, even if no requests are coming in.
-- Set up an **Auto-Shutdown schedule** in Azure Portal (`VM -> Operations -> Auto-shutdown`) to turn off the VM at a set time daily (e.g. 2:00 AM).
-- When not actively developing or running campaigns, stop the VM using `Deallocate` (so compute billing stops).
+- Set up an **Auto-Shutdown schedule** in Azure Portal (`VM -> Operations -> Auto-shutdown`) to turn off the VM at a set time daily.
+- When not actively developing or running campaigns, stop the VM using `Deallocate` so compute billing stops.
 
 ---
 
@@ -106,5 +105,4 @@ Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision
 
 - **Application Code (instaXoom):** MIT License (full commercial and personal use rights).
 - **Flux.1 [schnell]:** Released by Black Forest Labs under **Apache 2.0** (permissive open source, commercial use permitted).
-- **Flux.1 [dev]:** Non-commercial research license only. (We default to `schnell` for licensing peace of mind and speed).
-- **InsightFace / Antelopev2:** Non-commercial research license; for full enterprise commercial deployment, replace with InsightFace ONNX Buffalo_l or open-source face landmarks.
+- **Flux.1 [dev]:** Non-commercial research license only.
