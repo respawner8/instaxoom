@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Instagram, Share2, Download, CheckCircle2, Flame, RefreshCw, Layers } from "lucide-react";
+import { Sparkles, Upload, Instagram, Share2, Download, CheckCircle2, Flame, RefreshCw, Layers, AlertCircle } from "lucide-react";
 
 export default function Home() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -9,7 +9,35 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [remainingQuota, setRemainingQuota] = useState<number>(3);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [trendData, setTrendData] = useState<{
+    title: string;
+    tagline: string;
+    date: string;
+    hashtags: string[];
+  }>({
+    title: "1990s High School Yearbook",
+    tagline: "Transform your selfies into an authentic 1994 vintage yearbook portrait with authentic 35mm film grain and classic blue studio backdrop.",
+    date: "DAILY TREND • 90s RETRO",
+    hashtags: ["#90sYearbook", "#VintageAesthetic", "#instaXoom"],
+  });
+
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    fetch(`${apiUrl}/api/trends/today`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.trend) {
+          setTrendData({
+            title: data.trend.title || "1990s High School Yearbook",
+            tagline: data.trend.tagline || "",
+            date: data.trend.date ? `DAILY TREND • ${data.trend.date}` : "DAILY TREND",
+            hashtags: data.trend.hashtags || ["#instaXoom"],
+          });
+        }
+      })
+      .catch((err) => console.log("Using default trend data:", err));
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -18,6 +46,7 @@ export default function Home() {
 
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviewUrls(urls);
+    setErrorMessage(null);
   };
 
   const handleGenerate = async () => {
@@ -25,17 +54,15 @@ export default function Home() {
     setIsGenerating(true);
     setGenerationProgress(10);
     setGeneratedImage(null);
+    setErrorMessage(null);
 
-    // Simulated generation progress for UX while ComfyUI processes
+    // Dynamic progression while ComfyUI processes diffusion steps
     const interval = setInterval(() => {
       setGenerationProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return prev + 15;
+        if (prev >= 92) return 92;
+        return prev + 6;
       });
-    }, 1500);
+    }, 1000);
 
     try {
       const formData = new FormData();
@@ -48,46 +75,42 @@ export default function Home() {
         body: formData,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        clearInterval(interval);
-        setGenerationProgress(100);
-        // Default display image placeholder
-        setGeneratedImage("https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1080&q=80");
-        if (data.quota?.remaining_generations !== undefined) {
-          setRemainingQuota(data.quota.remaining_generations);
-        }
-      } else {
-        // Fallback for demo when backend worker is waiting for models
-        clearInterval(interval);
-        setGenerationProgress(100);
-        setGeneratedImage("https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1080&q=80");
-        setRemainingQuota((prev) => Math.max(0, prev - 1));
-      }
-    } catch (err) {
-      console.warn("Backend connecting...", err);
+      const data = await res.json();
       clearInterval(interval);
-      setGenerationProgress(100);
-      setGeneratedImage("https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1080&q=80");
+
+      if (res.ok && data.image_url) {
+        setGenerationProgress(100);
+        const fullUrl = data.image_url.startsWith("http")
+          ? data.image_url
+          : `${apiUrl}${data.image_url}`;
+        setGeneratedImage(fullUrl);
+      } else {
+        setErrorMessage(data.detail || "Image generation failed. Please try again.");
+      }
+    } catch (err: any) {
+      clearInterval(interval);
+      console.error("Generation request error:", err);
+      setErrorMessage(err?.message || "Failed to reach inference server. Please check the backend connection.");
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleShareToInstagram = async () => {
+    const hashtagStr = trendData.hashtags.join(" ");
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "My 90s Yearbook Trend on instaXoom",
-          text: "Transformed myself with today's #90sYearbook trend! #instaXoom #AI",
+          title: `${trendData.title} on instaXoom`,
+          text: `Transformed myself with today's trend on instaXoom! ${hashtagStr}`,
           url: window.location.href,
         });
       } catch (e) {
         console.log("Share dismissed", e);
       }
     } else {
-      navigator.clipboard.writeText("Transformed myself with today's #90sYearbook trend! #instaXoom");
-      alert("Caption and hashtags copied! Open Instagram to share your downloaded image.");
+      navigator.clipboard.writeText(`Transformed myself with today's trend on instaXoom! ${hashtagStr}`);
+      alert("Caption and hashtags copied! Open Instagram to share your downloaded portrait.");
     }
   };
 
@@ -109,9 +132,6 @@ export default function Home() {
             <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             <span>Today's Drop</span>
           </div>
-          <div className="text-xs px-3 py-1 rounded-full bg-rose-950/40 border border-rose-800/50 text-rose-300 font-semibold">
-            {remainingQuota} Free Left Today
-          </div>
         </div>
       </header>
 
@@ -120,14 +140,14 @@ export default function Home() {
         {/* Trend Banner Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
           <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-          <span>DAILY TREND &bull; SEPTEMBER 13</span>
+          <span>{trendData.date}</span>
         </div>
 
         <h1 className="text-4xl md:text-5xl font-black text-center tracking-tight mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
-          1990s High School Yearbook
+          {trendData.title}
         </h1>
         <p className="text-neutral-400 text-center text-sm md:text-base max-w-xl mb-10 leading-relaxed">
-          Transform your selfies into an authentic 1994 vintage yearbook portrait with authentic 35mm film grain and classic blue studio backdrop.
+          {trendData.tagline}
         </p>
 
         {/* Generator Card */}
@@ -225,6 +245,14 @@ export default function Home() {
               </>
             )}
           </button>
+
+          {/* Error Notice */}
+          {errorMessage && (
+            <div className="mt-4 p-4 rounded-xl bg-red-950/40 border border-red-800/50 text-red-300 text-sm flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
           {/* Output Preview & Instagram Export */}
           {generatedImage && (
