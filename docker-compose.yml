@@ -1,0 +1,130 @@
+services:
+  # =================================================================
+  # Frontend Client (Next.js 15)
+  # =================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: instaxoom_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - instaxoom_net
+
+  # =================================================================
+  # Backend API Gateway (FastAPI)
+  # =================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: instaxoom_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example
+    volumes:
+      - ./backend:/app
+      - shared_uploads:/app/uploads
+    depends_on:
+      - redis
+      - db
+      - storage
+    networks:
+      - instaxoom_net
+
+  # =================================================================
+  # Inference Service (ComfyUI Headless with NVIDIA GPU)
+  # =================================================================
+  inference:
+    build:
+      context: ./inference
+      dockerfile: Dockerfile
+    container_name: instaxoom_inference
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    volumes:
+      # Mount model weights from host (prevents baking 20GB+ into docker layers)
+      - ./models:/app/ComfyUI/models
+      - shared_uploads:/app/ComfyUI/input
+      - shared_outputs:/app/ComfyUI/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - instaxoom_net
+
+  # =================================================================
+  # Database (PostgreSQL 16)
+  # =================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: instaxoom_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: instaxoom
+      POSTGRES_PASSWORD: instaxoom_secret_password
+      POSTGRES_DB: instaxoom_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - instaxoom_net
+
+  # =================================================================
+  # Redis (Cache, Rate Limiting & Job Queue)
+  # =================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: instaxoom_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - instaxoom_net
+
+  # =================================================================
+  # Storage (MinIO Local S3-Compatible Storage)
+  # =================================================================
+  storage:
+    image: minio/minio:latest
+    container_name: instaxoom_storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - instaxoom_net
+
+networks:
+  instaxoom_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  shared_uploads:
+  shared_outputs:

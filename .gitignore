@@ -1,0 +1,84 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# Node.js & Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# AI Model Checkpoints & Weights (Critical: do not commit multi-gigabyte models)
+models/
+*.safetensors
+*.ckpt
+*.bin
+*.pt
+*.pth
+*.gguf
+*.onnx
+*.engine
+
+# Image Outputs, Uploads & Local Storage
+storage_data/
+minio_data/
+output/
+outputs/
+temp/
+uploads/
+*.png
+*.jpg
+*.jpeg
+*.webp
+!frontend/public/assets/*
+
+# Database
+postgres_data/
+*.sqlite3
+*.db
+
+# ComfyUI runtime artifacts
+ComfyUI/
+inference/ComfyUI/
+custom_nodes/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
