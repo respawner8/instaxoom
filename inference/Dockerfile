@@ -37,8 +37,9 @@ RUN pip install --no-cache-dir \
     insightface \
     facexlib
 
-# Clone custom nodes for Flux & PuLID
+# Clone custom nodes for Flux, GGUF & PuLID
 RUN git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git /app/ComfyUI/custom_nodes/ComfyUI-Manager && \
+    git clone --depth 1 https://github.com/city96/ComfyUI-GGUF.git /app/ComfyUI/custom_nodes/ComfyUI-GGUF && \
     git clone --depth 1 https://github.com/balazsb/ComfyUI-PuLID-Flux.git /app/ComfyUI/custom_nodes/ComfyUI-PuLID-Flux || true
 
 EXPOSE 8188
