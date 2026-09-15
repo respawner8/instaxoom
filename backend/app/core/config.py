@@ -35,7 +35,8 @@ class Settings(BaseSettings):
     COMFYUI_WS_URL: str = "ws://inference:8188/ws"
 
     # Model defaults
-    FLUX_MODEL_NAME: str = "flux1-schnell-nf4.safetensors"
+    FLUX_MODEL_NAME: str = "flux1-schnell-Q4_K_S.gguf"
+    FLUX_UNET_NAME: str = "flux1-schnell-Q4_K_S.gguf"
     DEFAULT_STEPS: int = 4
     DEFAULT_GUIDANCE: float = 3.5
 
