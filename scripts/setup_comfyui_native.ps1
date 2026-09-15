@@ -64,14 +64,15 @@ if (-not (Test-Path $VenvDir)) {
     Write-Host "[*] Upgrading pip..." -ForegroundColor Yellow
     & "$VenvPython" -m pip install --upgrade pip
 
-    Write-Host "[*] Installing PyTorch with CUDA 12.4..." -ForegroundColor Yellow
-    & "$VenvPip" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-
-    Write-Host "[*] Installing ComfyUI base dependencies..." -ForegroundColor Yellow
-    & "$VenvPip" install -r (Join-Path $InstallDir "requirements.txt")
+    Write-Host "[*] Installing PyTorch..." -ForegroundColor Yellow
+    & "$VenvPip" install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 } else {
-    Write-Host "[OK] Virtual environment already exists." -ForegroundColor Green
+    Write-Host "[OK] Virtual environment found at $VenvDir" -ForegroundColor Green
 }
+
+Write-Host "[*] Installing/verifying ComfyUI base dependencies and filelock..." -ForegroundColor Yellow
+& "$VenvPip" install -r (Join-Path $InstallDir "requirements.txt")
+& "$VenvPip" install filelock
 
 # 4. Install PuLID-Flux custom node and face embedding dependencies
 $CustomNodesDir = Join-Path $InstallDir "custom_nodes"
