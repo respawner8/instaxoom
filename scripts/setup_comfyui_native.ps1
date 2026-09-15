@@ -71,7 +71,11 @@ if (-not (Test-Path $VenvDir)) {
 }
 
 Write-Host "[*] Installing/verifying ComfyUI base dependencies and filelock..." -ForegroundColor Yellow
-& "$VenvPip" install -r (Join-Path $InstallDir "requirements.txt")
+$reqFile = Join-Path $InstallDir "requirements.txt"
+if (Test-Path $reqFile) {
+    (Get-Content $reqFile) | Where-Object { $_ -notmatch 'workflow-templates' } | Set-Content $reqFile
+    & "$VenvPip" install -r $reqFile
+}
 & "$VenvPip" install filelock
 
 # 4. Install PuLID-Flux custom node and face embedding dependencies
