@@ -309,6 +309,14 @@ async def generate_trend_image(
         async with aiofiles.open(dest_path, "wb") as buffer:
             content = await photo.read()
             await buffer.write(content)
+
+        # Upload directly to ComfyUI input directory (works seamlessly in both container & native host mode)
+        try:
+            await comfy_client.upload_image(content, unique_name)
+        except Exception as upload_err:
+            # If ComfyUI shares the local filesystem or volume, this is non-fatal
+            pass
+
         saved_filenames.append(unique_name)
 
     # 3. Resolve aspect ratio (default locked to 4:5)

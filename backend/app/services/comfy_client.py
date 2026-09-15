@@ -17,6 +17,19 @@ class ComfyUIClient:
         self.base_url = settings.COMFYUI_URL
         self.ws_url = settings.COMFYUI_WS_URL
 
+    async def upload_image(self, image_bytes: bytes, filename: str) -> str:
+        """
+        Uploads an image to ComfyUI's input directory via POST /upload/image.
+        Ensures ComfyUI has the image whether running in Docker or standalone native!
+        """
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            files = {"image": (filename, image_bytes, "image/jpeg")}
+            data = {"overwrite": "true"}
+            response = await client.post(f"{self.base_url}/upload/image", files=files, data=data)
+            if response.status_code == 200:
+                return response.json().get("name", filename)
+            raise RuntimeError(f"Failed to upload image to ComfyUI ({response.status_code}): {response.text}")
+
     async def queue_prompt(self, workflow_prompt: Dict[str, Any], client_id: str) -> str:
         """
         Sends a parameterized workflow graph to ComfyUI /prompt endpoint.

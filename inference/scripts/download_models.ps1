@@ -6,14 +6,19 @@
 
 param (
     [ValidateSet("dev", "schnell", "all")]
-    [string]$Preset = "dev"
+    [string]$Preset = "dev",
+
+    [string]$ModelsDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
-$ModelsDir = Join-Path $RootDir "models"
+
+if ([string]::IsNullOrWhiteSpace($ModelsDir)) {
+    $ModelsDir = Join-Path $RootDir "models"
+}
 
 $CheckpointsDir = Join-Path $ModelsDir "checkpoints"
 $UnetDir        = Join-Path $ModelsDir "unet"
