@@ -1,6 +1,7 @@
 # ==============================================================================
 # instaXoom Model Downloader (PowerShell / Windows Native)
-# Downloads Flux.1 Schnell GGUF (Q4_K_S), text encoders, and VAE directly to ./models
+# Downloads Flux.1 Schnell GGUF (Q4_K_S) or Flux.1 Dev FP8, text encoders, VAE,
+# PuLID, and InsightFace models directly to ./models (or specified -ModelsDir)
 # No Python or HuggingFace account/token required.
 # ==============================================================================
 
@@ -49,7 +50,7 @@ function Download-ModelFile {
         $fileSize = (Get-Item $DestinationPath).Length
         if ($fileSize -ge $MinBytes) {
             $displaySize = if ($fileSize -gt 1GB) { "$([math]::round($fileSize / 1GB, 2)) GB" } else { "$([math]::round($fileSize / 1MB, 2)) MB" }
-            Write-Host "[✓] $Name already exists ($displaySize). Skipping download." -ForegroundColor Green
+            Write-Host "[OK] $Name already exists ($displaySize). Skipping download." -ForegroundColor Green
             return
         }
     }
@@ -63,7 +64,7 @@ function Download-ModelFile {
 
     if ($LASTEXITCODE -eq 0 -and (Test-Path $DestinationPath)) {
         $finalSize = (Get-Item $DestinationPath).Length
-        Write-Host "[✓] Successfully downloaded $Name ($([math]::round($finalSize / 1GB, 2)) GB)" -ForegroundColor Green
+        Write-Host "[OK] Successfully downloaded $Name ($([math]::round($finalSize / 1GB, 2)) GB)" -ForegroundColor Green
     } else {
         Write-Host "[X] Download failed for $Name. You can re-run this script to resume." -ForegroundColor Red
     }
@@ -144,5 +145,5 @@ foreach ($f in $AntelopeFiles) {
 }
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
-Write-Host " [✓] All Flux.1, PuLID, and InsightFace models are ready! " -ForegroundColor Green
+Write-Host " [OK] All Flux.1, PuLID, and InsightFace models are ready! " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Cyan
