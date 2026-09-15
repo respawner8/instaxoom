@@ -89,9 +89,36 @@ Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision
    ```
    Outputs an authentic Instagram 4:5 portrait (`test_output_4x5.png`, 864×1080).
 
+## 4. HP Workstation (32GB VRAM & 128GB RAM) Setup
+
+The HP Workstation has 32GB of dedicated VRAM, eliminating memory bottlenecks and allowing uncompressed full-precision model execution:
+
+1. **Recommended Model:** **Flux.1 [dev] FP8** (`flux1-dev-fp8.safetensors`, ~11.9 GB) with 20 diffusion steps and `FluxGuidance` at 3.5.
+2. **Download Full Models:**
+   ```powershell
+   # PowerShell (Native)
+   .\inference\scripts\download_models.ps1 -Preset dev
+
+   # Or Python
+   python inference/scripts/download_models.py --preset dev
+   ```
+3. **Configure Backend:**
+   In `.env`:
+   ```bash
+   FLUX_UNET_NAME=flux1-dev-fp8.safetensors
+   DEFAULT_STEPS=20
+   DEFAULT_GUIDANCE=3.5
+   ```
+4. **ComfyUI Launch on HP Workstation:**
+   Because 32GB VRAM holds the entire model without CPU offloading:
+   ```bash
+   python main.py --listen 0.0.0.0 --port 8188 --highvram --fast
+   ```
+   Generates a full 20-step dev portrait in ~5–8 seconds!
+
 ---
 
-## 4. Azure Deployment
+## 5. Azure Cloud Deployment
 
 ### 1. Azure GPU VM Instance Selection
 - **Recommended VM:** `Standard_NC4as_T4_v3` (1x NVIDIA Tesla T4, 16GB VRAM, 4 vCPUs, 28GB RAM) or `Standard_NV4as_v4` / `Standard_NC6s_v3`.
@@ -112,7 +139,78 @@ Flux.1 is a ~12-billion parameter flow-transformer model. In full FP16 precision
 
 ---
 
-## 5. Licensing Summary
+## 6. Recommended 2-Tier Architecture (Vercel Frontend + HP Workstation Backend & Inference)
+
+Deploying **both Backend (FastAPI) and Inference (ComfyUI) directly on your HP Workstation** is the recommended setup:
+
+```
+[ Tier 1: Frontend ] ──────── (Vercel Free Tier Global Edge CDN)
+          │
+          │ HTTPS (REST API calls)
+          ▼
+========================================================================
+[ HP WORKSTATION (32GB GPU, 128GB RAM) ]
+  ├── [ Cloudflare Tunnel (cloudflared) ] ──► Exposes Port 8000 Only
+  │
+  ├── [ Tier 2: FastAPI Backend Gateway ] (Port 8000)
+  │         │
+  │         │ Internal Local Communication (Zero Latency / Shared NVMe Volumes)
+  │         ▼
+  └── [ Inference: ComfyUI Headless ] (Port 8188 - Private, Not Exposed)
+            │ (32GB VRAM Passthrough)
+            ▼
+      [ NVIDIA GPU: Flux.1 [dev] FP8 + PuLID + InsightFace ]
+========================================================================
+```
+
+### Why This is the Superior Architecture:
+1. **$0 / Month Cloud Bill:** Zero compute charges. No need to rent Azure VMs or request GPU quota expansions.
+2. **Gigabytes/sec Disk Transfer:** Uploaded selfies and output portraits are read/written directly to the local NVMe drive (`shared_uploads` and `shared_outputs`), avoiding multiple internet file transfers.
+3. **Hardened Security:** ComfyUI (Port 8188) is **never exposed to the public internet**; only the FastAPI gateway (Port 8000) is accessible through Cloudflare Tunnel.
+4. **Single Tunnel Command:** You only need to run one tunnel command for the entire stack.
+
+### Step-by-Step Setup on HP Workstation:
+
+1. **Clone Repo & Download Models on Workstation:**
+   ```powershell
+   git clone <repo-url>
+   cd instaXoom
+   .\inference\scripts\download_models.ps1 -Preset dev
+   ```
+
+2. **Launch Backend & ComfyUI with Docker Compose:**
+   ```powershell
+   docker compose up -d backend inference redis db storage
+   ```
+   *(Frontend is not started locally because it runs on Vercel).*
+
+3. **Expose the Backend via Cloudflare Tunnel:**
+   ```powershell
+   cloudflared tunnel --url http://localhost:8000
+   ```
+   Cloudflare outputs a public HTTPS address (e.g., `https://instaxoom-api.trycloudflare.com`).
+
+4. **Connect Vercel Frontend:**
+   - Deploy `frontend/` to Vercel.
+   - In Vercel Project Settings $\rightarrow$ **Environment Variables**, set:
+     ```bash
+     NEXT_PUBLIC_API_URL=https://instaxoom-api.trycloudflare.com
+     ```
+   - Done! Your Vercel web app now runs on global CDN, while all heavy AI inference and database operations run on your local 32GB GPU.
+
+---
+
+## 7. Alternative: Hybrid 3-Tier Architecture (Vercel + Azure VM + HP Workstation)
+
+If you prefer to keep the FastAPI backend running in the cloud 24/7 on an Azure CPU VM (`Standard_B2s`), you can tunnel ComfyUI on port 8188 to Azure:
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8188
+```
+And set `COMFYUI_URL=https://<subdomain>.trycloudflare.com` in the Azure VM `.env`.
+
+---
+
+## 8. Licensing Summary
 
 - **Application Code (instaXoom):** MIT License (full commercial and personal use rights).
 - **Flux.1 [schnell]:** Released by Black Forest Labs under **Apache 2.0** (permissive open source, commercial use permitted).

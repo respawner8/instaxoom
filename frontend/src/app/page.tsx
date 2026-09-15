@@ -1,43 +1,136 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Upload, Instagram, Share2, Download, CheckCircle2, Flame, RefreshCw, Layers, AlertCircle } from "lucide-react";
+import {
+  Sparkles,
+  Upload,
+  Instagram,
+  Share2,
+  Download,
+  CheckCircle2,
+  Flame,
+  RefreshCw,
+  Layers,
+  AlertCircle,
+  Sliders,
+  RotateCcw,
+  Tag,
+  X
+} from "lucide-react";
+
+interface Theme {
+  id: string;
+  title: string;
+  category: string;
+  tagline: string;
+  hashtags: string[];
+  prompt_template: string;
+  preview_image_url?: string;
+}
+
+const DEFAULT_THEMES: Theme[] = [
+  {
+    id: "trend-retro-90s-yearbook",
+    title: "1990s Yearbook",
+    category: "Vintage",
+    tagline: "Authentic 1994 vintage yearbook portrait with film grain, soft flash, and blue studio backdrop.",
+    hashtags: ["#90sYearbook", "#VintageAesthetic", "#instaXoom"],
+    prompt_template: "1990s high school yearbook photo, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling high school student, authentic 90s hair and collar shirt",
+  },
+  {
+    id: "trend-cyberpunk-neon",
+    title: "Cyberpunk 2077",
+    category: "Sci-Fi",
+    tagline: "Dystopian night city portrait drenched in vivid magenta and cyan neon reflections.",
+    hashtags: ["#Cyberpunk", "#NeonTokyo", "#instaXoom"],
+    prompt_template: "cyberpunk portrait, high-tech glowing neon rain-slicked city streets background, dramatic volumetric rim lighting, vivid magenta and cyan reflections, wearing futuristic cybernetic collar and techwear jacket, 8k cinematic film still, detailed reflections",
+  },
+  {
+    id: "trend-70s-polaroid",
+    title: "1970s Polaroid",
+    category: "Retro",
+    tagline: "Nostalgic analog snapshot with warm sun-drenched golden tones and subtle light leaks.",
+    hashtags: ["#70sVibe", "#AnalogFilm", "#PolaroidAesthetic"],
+    prompt_template: "1970s vintage polaroid snapshot, warm sepia and golden hour daylight, subtle authentic light leak, soft analog film grain, retro 70s casual wardrobe, candid intimate expression, Kodachrome color palette, nostalgic mood",
+  },
+  {
+    id: "trend-old-money-luxury",
+    title: "Old Money Luxury",
+    category: "Editorial",
+    tagline: "Timeless editorial portrait in a Mediterranean villa garden with natural golden sunlight.",
+    hashtags: ["#OldMoney", "#QuietLuxury", "#EditorialPortrait"],
+    prompt_template: "editorial luxury portrait in Lake Como villa terrace garden, soft afternoon golden sunlight, natural bokeh cypress trees and lake in background, wearing tailored cream linen blazer, elegant poised expression, Vogue magazine cover aesthetic",
+  },
+  {
+    id: "trend-studio-ghibli",
+    title: "Studio Ghibli",
+    category: "Anime",
+    tagline: "Dreamy, hand-painted anime portrait with vibrant skies and whimsical storybook atmosphere.",
+    hashtags: ["#GhibliStyle", "#AnimePortrait", "#ArtisticAesthetic"],
+    prompt_template: "masterpiece anime portrait in the whimsical art style of Studio Ghibli, painted watercolor clouds, gentle summer breeze moving hair, warm afternoon light, vibrant hand-drawn aesthetic, high details, Hayao Miyazaki aesthetic",
+  },
+];
+
+const SUGGESTED_MODIFIERS = [
+  "smiling warmly",
+  "vintage leather jacket",
+  "35mm direct flash",
+  "dramatic golden hour",
+  "high fashion jewelry",
+  "wind in hair",
+];
 
 export default function Home() {
+  const [themes, setThemes] = useState<Theme[]>(DEFAULT_THEMES);
+  const [selectedTheme, setSelectedTheme] = useState<Theme>(DEFAULT_THEMES[0]);
+  const [customPrompt, setCustomPrompt] = useState<string>(DEFAULT_THEMES[0].prompt_template);
+  const [isPromptEdited, setIsPromptEdited] = useState<boolean>(false);
+
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [trendData, setTrendData] = useState<{
-    title: string;
-    tagline: string;
-    date: string;
-    hashtags: string[];
-  }>({
-    title: "1990s High School Yearbook",
-    tagline: "Transform your selfies into an authentic 1994 vintage yearbook portrait with authentic 35mm film grain and classic blue studio backdrop.",
-    date: "DAILY TREND • 90s RETRO",
-    hashtags: ["#90sYearbook", "#VintageAesthetic", "#instaXoom"],
-  });
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     fetch(`${apiUrl}/api/trends/today`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.trend) {
-          setTrendData({
-            title: data.trend.title || "1990s High School Yearbook",
-            tagline: data.trend.tagline || "",
-            date: data.trend.date ? `DAILY TREND • ${data.trend.date}` : "DAILY TREND",
-            hashtags: data.trend.hashtags || ["#instaXoom"],
-          });
+        if (data.themes && Array.isArray(data.themes) && data.themes.length > 0) {
+          setThemes(data.themes);
+          if (!isPromptEdited) {
+            const first = data.themes[0];
+            setSelectedTheme(first);
+            setCustomPrompt(first.prompt_template);
+          }
         }
       })
-      .catch((err) => console.log("Using default trend data:", err));
+      .catch((err) => console.log("Using default themes:", err));
   }, []);
+
+  const handleThemeSelect = (theme: Theme) => {
+    setSelectedTheme(theme);
+    setCustomPrompt(theme.prompt_template);
+    setIsPromptEdited(false);
+    setErrorMessage(null);
+  };
+
+  const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setCustomPrompt(e.target.value);
+    setIsPromptEdited(e.target.value !== selectedTheme.prompt_template);
+  };
+
+  const handleResetPrompt = () => {
+    setCustomPrompt(selectedTheme.prompt_template);
+    setIsPromptEdited(false);
+  };
+
+  const handleAddModifier = (mod: string) => {
+    setCustomPrompt((prev) => (prev.endsWith(",") || prev.endsWith(", ") ? `${prev} ${mod}` : `${prev}, ${mod}`));
+    setIsPromptEdited(true);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -47,6 +140,11 @@ export default function Home() {
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviewUrls(urls);
     setErrorMessage(null);
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleGenerate = async () => {
@@ -68,6 +166,8 @@ export default function Home() {
       const formData = new FormData();
       uploadedFiles.forEach((file) => formData.append("photos", file));
       formData.append("aspect_ratio", "4:5");
+      formData.append("theme_id", selectedTheme.id);
+      formData.append("prompt", customPrompt);
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/api/trends/generate`, {
@@ -97,19 +197,19 @@ export default function Home() {
   };
 
   const handleShareToInstagram = async () => {
-    const hashtagStr = trendData.hashtags.join(" ");
+    const hashtagStr = selectedTheme.hashtags.join(" ");
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${trendData.title} on instaXoom`,
-          text: `Transformed myself with today's trend on instaXoom! ${hashtagStr}`,
+          title: `${selectedTheme.title} on instaXoom`,
+          text: `Transformed myself with the ${selectedTheme.title} aesthetic on instaXoom! ${hashtagStr}`,
           url: window.location.href,
         });
       } catch (e) {
         console.log("Share dismissed", e);
       }
     } else {
-      navigator.clipboard.writeText(`Transformed myself with today's trend on instaXoom! ${hashtagStr}`);
+      navigator.clipboard.writeText(`Transformed myself with the ${selectedTheme.title} aesthetic on instaXoom! ${hashtagStr}`);
       alert("Caption and hashtags copied! Open Instagram to share your downloaded portrait.");
     }
   };
@@ -130,31 +230,30 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-medium text-neutral-300">
             <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>Today's Drop</span>
+            <span>Dev & Multi-Theme Active</span>
           </div>
         </div>
       </header>
 
-      {/* Hero / Daily Trend Showcase */}
+      {/* Hero / Header */}
       <div className="max-w-4xl mx-auto w-full px-4 pt-10 pb-16 flex-1 flex flex-col items-center">
-        {/* Trend Banner Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
           <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-          <span>{trendData.date}</span>
+          <span>AI PORTRAIT GENERATOR &bull; FLUX.1 + PuLID</span>
         </div>
 
         <h1 className="text-4xl md:text-5xl font-black text-center tracking-tight mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
-          {trendData.title}
+          {selectedTheme.title}
         </h1>
         <p className="text-neutral-400 text-center text-sm md:text-base max-w-xl mb-10 leading-relaxed">
-          {trendData.tagline}
+          {selectedTheme.tagline}
         </p>
 
-        {/* Generator Card */}
-        <div className="w-full bg-neutral-900/60 border border-neutral-800/90 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-2xl">
+        {/* Main Generator Card */}
+        <div className="w-full bg-neutral-900/60 border border-neutral-800/90 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-2xl space-y-8">
           
           {/* Step 1: Photo Upload */}
-          <div className="mb-8">
+          <div>
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
                 <span>1. Upload Face Photos</span>
@@ -162,7 +261,7 @@ export default function Home() {
               </label>
               <span className="text-xs text-rose-400 font-medium flex items-center gap-1">
                 <Layers className="w-3.5 h-3.5" />
-                3-5 photos give highest likeness
+                PuLID Face Likeness
               </span>
             </div>
 
@@ -184,7 +283,7 @@ export default function Home() {
                     : "Tap to select or drop photos here"}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  Clear selfies with good lighting produce the sharpest results
+                  Upload clear selfies from different angles to pool facial vectors
                 </p>
               </div>
             </div>
@@ -193,27 +292,120 @@ export default function Home() {
             {previewUrls.length > 0 && (
               <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
                 {previewUrls.map((url, idx) => (
-                  <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 flex-shrink-0">
+                  <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 flex-shrink-0 group">
                     <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(idx)}
+                      className="absolute top-1 right-1 bg-black/70 hover:bg-rose-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Step 2: Instagram Format (Locked to 4:5) */}
-          <div className="mb-8">
+          {/* Step 2: Theme Selector */}
+          <div>
             <label className="block text-sm font-semibold text-neutral-200 mb-3">
-              2. Instagram Format
+              2. Select Aesthetic Theme
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {themes.map((theme) => {
+                const isActive = theme.id === selectedTheme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => handleThemeSelect(theme)}
+                    className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
+                      isActive
+                        ? "border-rose-500 bg-rose-500/10 shadow-lg shadow-rose-500/10 scale-[1.02]"
+                        : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-700 hover:bg-neutral-900/60"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
+                        {theme.category}
+                      </span>
+                      <div className="font-semibold text-sm text-white mt-1 leading-snug">
+                        {theme.title}
+                      </div>
+                    </div>
+                    {isActive && (
+                      <div className="mt-2 flex items-center gap-1 text-[11px] text-rose-300 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Active</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Step 3: Editable Prompt Box (Dev Mode) */}
+          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-950/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-amber-400" />
+                <span>3. Customize Prompt (Dev & Prompt Tweaker)</span>
+              </label>
+              {isPromptEdited && (
+                <button
+                  type="button"
+                  onClick={handleResetPrompt}
+                  className="text-xs text-neutral-400 hover:text-rose-400 flex items-center gap-1 transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Theme Default</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-neutral-500">
+              Edit lighting, clothing, expression, or background details directly before generating.
+            </p>
+
+            <textarea
+              value={customPrompt}
+              onChange={handlePromptChange}
+              rows={4}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-sm text-neutral-200 focus:outline-none focus:border-rose-500/60 focus:ring-1 focus:ring-rose-500/60 transition resize-y font-mono leading-relaxed"
+              placeholder="Enter your prompt description..."
+            />
+
+            {/* Quick Keyword Modifier Chips */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <span className="text-[11px] text-neutral-500 self-center mr-1">Quick Add:</span>
+              {SUGGESTED_MODIFIERS.map((mod, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleAddModifier(mod)}
+                  className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[11px] text-neutral-300 transition"
+                >
+                  + {mod}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Step 4: Instagram Format (Locked to 4:5) */}
+          <div>
+            <label className="block text-sm font-semibold text-neutral-200 mb-3">
+              4. Instagram Aspect Ratio
             </label>
             <div className="p-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 text-white flex items-center justify-between shadow-lg shadow-rose-500/5">
               <div>
                 <div className="font-semibold text-sm flex items-center gap-2">
                   <span>Feed Portrait (4:5)</span>
-                  <span className="px-2 py-0.5 text-[11px] rounded-full bg-rose-500/20 text-rose-300 font-medium">Standard</span>
+                  <span className="px-2 py-0.5 text-[11px] rounded-full bg-rose-500/20 text-rose-300 font-medium">Locked</span>
                 </div>
                 <div className="text-xs text-neutral-400 mt-0.5">
-                  1080 × 1350 &bull; Maximizes mobile screen area in the Instagram feed
+                  864 × 1080 &bull; Maximizes screen engagement in the Instagram mobile feed
                 </div>
               </div>
               <div className="h-9 w-7 rounded border border-rose-400/40 bg-rose-500/20 flex items-center justify-center text-[10px] font-mono text-rose-200">
@@ -222,7 +414,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Step 3: Generate CTA */}
+          {/* Step 5: Generate CTA */}
           <button
             type="button"
             disabled={uploadedFiles.length === 0 || isGenerating}
@@ -236,19 +428,19 @@ export default function Home() {
             {isGenerating ? (
               <>
                 <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Crafting Today's Trend ({generationProgress}%)...</span>
+                <span>Generating {selectedTheme.title} ({generationProgress}%)...</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                <span>Generate Yearbook Portrait</span>
+                <span>Generate {selectedTheme.title} Portrait</span>
               </>
             )}
           </button>
 
           {/* Error Notice */}
           {errorMessage && (
-            <div className="mt-4 p-4 rounded-xl bg-red-950/40 border border-red-800/50 text-red-300 text-sm flex items-center gap-2">
+            <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/50 text-red-300 text-sm flex items-center gap-2">
               <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400" />
               <span>{errorMessage}</span>
             </div>
@@ -259,7 +451,7 @@ export default function Home() {
             <div className="mt-10 pt-8 border-t border-neutral-800 flex flex-col items-center">
               <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold mb-4">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Trend Portrait Ready!</span>
+                <span>{selectedTheme.title} Ready!</span>
               </div>
 
               <div className="overflow-hidden rounded-2xl border border-neutral-800 shadow-2xl relative bg-black w-[300px] h-[375px]">
@@ -282,7 +474,7 @@ export default function Home() {
                 </button>
                 <a
                   href={generatedImage}
-                  download="instaxoom_trend.jpg"
+                  download="instaxoom_trend.png"
                   className="py-3 px-4 rounded-xl font-semibold bg-neutral-800 hover:bg-neutral-700 text-white flex items-center justify-center gap-2 text-sm transition"
                 >
                   <Download className="w-4 h-4" />
@@ -296,3 +488,4 @@ export default function Home() {
     </main>
   );
 }
+
