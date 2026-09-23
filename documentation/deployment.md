@@ -215,3 +215,102 @@ And set `COMFYUI_URL=https://<subdomain>.trycloudflare.com` in the Azure VM `.en
 - **Application Code (instaXoom):** MIT License (full commercial and personal use rights).
 - **Flux.1 [schnell]:** Released by Black Forest Labs under **Apache 2.0** (permissive open source, commercial use permitted).
 - **Flux.1 [dev]:** Non-commercial research license only.
+
+---
+
+## 9. Native Windows on AMD Ryzen AI Max / Radeon 8060S
+
+This deployment does not require Docker. Radeon 8060S is a `gfx1151` integrated
+GPU using shared system memory, not a dedicated NVIDIA GPU. Do not use CUDA
+wheels, `nvidia-smi`, or the NVIDIA inference container on this machine.
+
+Use an AMD graphics driver supported by the selected
+[ROCm release](https://rocm.docs.amd.com/en/docs-10.0.0/compatibility/compatibility-matrix.html).
+The pinned native Windows ROCm packages support Python 3.11. The AMD environment
+is created in `ComfyUI\venv-amd`, leaving `ComfyUI\venv` and model files intact.
+Do not mix ROCm releases or replace their PyTorch packages with generic wheels.
+
+From the repository root:
+
+```powershell
+.\scripts\setup_comfyui_native.ps1 -Gpu amd -Preset dev -ComfyRef v0.35.0 -NoStart
+.\scripts\setup_backend_native.ps1 -FaceProvider CPU -AllowedOrigins "https://app.example.com" -NoStart
+```
+
+For an existing complete model installation, pass `-SkipModelDownload` to the
+ComfyUI setup script. PuLID also needs the RetinaFace and BiSeNet weights in
+`ComfyUI\models\facexlib`; both model downloaders include these files.
+The release pin avoids unavailable dependencies from a moving development
+checkout. Revision changes refuse to overwrite tracked edits.
+PuLID is pinned to `7c7362b806c2c0f4bde8742ada9e7cb05b44d249` and receives
+`inference\patches\pulid-native-comfy.patch`, which uses ComfyUI's native
+block-replacement interface instead of replacing the entire FLUX forward method.
+
+The backend's native `.env` uses these settings:
+
+```dotenv
+COMFYUI_URL=http://127.0.0.1:8188
+COMFYUI_WS_URL=ws://127.0.0.1:8188/ws
+PULID_PROVIDER=CPU
+REQUIRE_PULID=true
+INFERENCE_TIMEOUT_SECONDS=600
+SINGLE_GENERATION_AT_A_TIME=true
+MAX_PHOTO_BYTES=10485760
+FLUX_UNET_NAME=flux1-dev-fp8.safetensors
+DEFAULT_STEPS=20
+DEFAULT_GUIDANCE=3.5
+ALLOWED_ORIGINS=https://app.example.com
+```
+
+CPU ONNX Runtime is used for InsightFace. FLUX and the PyTorch portions of
+PuLID use the AMD GPU. Do not install `onnxruntime-gpu` alongside `onnxruntime`.
+The PuLID fork imports FaceNet even for InsightFace workflows, so setup installs
+`facenet-pytorch` without its legacy dependency pins.
+
+Generation uses FLUX-dev FP8 with 20 steps, guidance 3.5, one Euler/simple
+sampling pass, PuLID weight 0.85, and an 864 x 1080 output. The API accepts
+1 to 5 photos but uses only the first as the reference. It synthesizes a new
+image; it does not preserve the original facial pixels.
+
+`REQUIRE_PULID=true` prevents a rejected identity-conditioned prompt from silently
+falling back to text-only generation. Responses include `identity_conditioning`
+(`pulid` or `none`). The timeout controls the backend's wait only, not a proxy's
+timeout. Concurrent generation is limited to one request per API process
+(additional requests receive HTTP 429), with a 10 MiB per-photo limit.
+
+Run each process in a separate terminal:
+
+```powershell
+.\scripts\run_native_process.ps1 -Component ComfyUI
+.\scripts\run_native_process.ps1 -Component Backend
+```
+
+These launchers set working directories, bind the servers to loopback, log to
+the ignored `runtime` directory, and restart a process after it exits.
+Stop the launcher to stop its child. Do not start duplicate launchers.
+
+Optional per-user Windows logon startup:
+
+```powershell
+.\scripts\install_native_startup.ps1
+```
+
+Pass `-IncludeTunnel` only when automatic public exposure is intended. Remove
+all three shortcuts with `.\scripts\install_native_startup.ps1 -IncludeTunnel -Remove`.
+Startup requires the Windows user to sign in after a reboot.
+
+For an explicitly unauthenticated tester endpoint, install the official
+`cloudflared` Windows package, then run:
+
+```powershell
+.\scripts\run_native_process.ps1 -Component Tunnel
+```
+
+Only FastAPI is published. The temporary HTTPS hostname appears in
+`runtime\tunnel-error.log` and changes when the tunnel restarts. Set the
+externally hosted frontend's `NEXT_PUBLIC_API_URL` to that URL before building,
+and set backend `ALLOWED_ORIGINS` to the exact frontend origin.
+
+CORS and a temporary URL are not authentication. Anyone with the URL can consume
+inference resources; daily quotas remain disabled. Public production use needs
+authentication, enforceable quotas and appropriate job/timeout handling.

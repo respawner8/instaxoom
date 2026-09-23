@@ -26,10 +26,11 @@ $UnetDir        = Join-Path $ModelsDir "unet"
 $ClipDir        = Join-Path $ModelsDir "clip"
 $VaeDir         = Join-Path $ModelsDir "vae"
 $PulidDir       = Join-Path $ModelsDir "pulid"
+$FacexlibDir    = Join-Path $ModelsDir "facexlib"
 $InsightfaceDir = Join-Path $ModelsDir "insightface\models\antelopev2"
 
 # Ensure target directories exist
-New-Item -ItemType Directory -Force -Path $CheckpointsDir, $UnetDir, $ClipDir, $VaeDir, $PulidDir, $InsightfaceDir | Out-Null
+New-Item -ItemType Directory -Force -Path $CheckpointsDir, $UnetDir, $ClipDir, $VaeDir, $PulidDir, $InsightfaceDir, $FacexlibDir | Out-Null
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host " instaXoom: Downloading Flux.1 + PuLID Face Models      " -ForegroundColor Cyan
@@ -60,13 +61,16 @@ function Download-ModelFile {
     Write-Host "    Dest:   $DestinationPath" -ForegroundColor DarkGray
 
     # Use curl.exe with follow-redirects (-L) and resume support (-C -)
-    & curl.exe -L -C - --progress-bar -o "$DestinationPath" "$Url"
+    & curl.exe --fail -L -C - --retry 3 --progress-bar -o "$DestinationPath" "$Url"
 
     if ($LASTEXITCODE -eq 0 -and (Test-Path $DestinationPath)) {
         $finalSize = (Get-Item $DestinationPath).Length
+        if ($finalSize -lt $MinBytes) {
+            throw "Downloaded file is too small for $Name ($finalSize bytes)."
+        }
         Write-Host "[OK] Successfully downloaded $Name ($([math]::round($finalSize / 1GB, 2)) GB)" -ForegroundColor Green
     } else {
-        Write-Host "[X] Download failed for $Name. You can re-run this script to resume." -ForegroundColor Red
+        throw "Download failed for $Name. Re-run this script to resume."
     }
 }
 
@@ -143,6 +147,20 @@ foreach ($f in $AntelopeFiles) {
         -ApproxSize $f.Size `
         -MinBytes $f.Min
 }
+
+Download-ModelFile `
+    -Name "FaceXLib RetinaFace detector" `
+    -Url "https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth" `
+    -DestinationPath (Join-Path $FacexlibDir "detection_Resnet50_Final.pth") `
+    -ApproxSize "104 MB" `
+    -MinBytes 10485760
+
+Download-ModelFile `
+    -Name "FaceXLib BiSeNet parser" `
+    -Url "https://github.com/xinntao/facexlib/releases/download/v0.2.0/parsing_bisenet.pth" `
+    -DestinationPath (Join-Path $FacexlibDir "parsing_bisenet.pth") `
+    -ApproxSize "64 MB" `
+    -MinBytes 10485760
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host " [OK] All Flux.1, PuLID, and InsightFace models are ready! " -ForegroundColor Green

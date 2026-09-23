@@ -17,6 +17,10 @@ This document covers the **FLUX.1** generative model setup, low-VRAM optimizatio
 
 ## 2. Multi-Photo Face Conditioning: 1 Photo vs. 5 Photos
 
+**Current implementation:** the API uses only the first uploaded reference.
+The multi-photo pooling design below is not wired into the live workflow.
+PuLID provides approximate likeness, not exact preservation of the source face.
+
 To achieve accurate facial likeness in trend portraits without retraining the model:
 
 ```

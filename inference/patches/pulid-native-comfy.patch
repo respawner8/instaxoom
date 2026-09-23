@@ -1,0 +1,37 @@
+diff --git a/PulidFluxHook.py b/PulidFluxHook.py
+index f750920..8af1688 100644
+--- a/PulidFluxHook.py
++++ b/PulidFluxHook.py
+@@ -65,5 +65,5 @@ class DitDoubleBlockReplace:
+     def __call__(self, input_args, extra_options):
+-        transformer_options = extra_options["transformer_options"]
++        transformer_options = input_args["transformer_options"]
+         pulid_temp_attrs = transformer_options.get(PatchKeys.pulid_patch_key_attrs, {})
+         sigma = pulid_temp_attrs["timesteps"][0].detach().cpu().item()
+         out = extra_options["original_block"](input_args)
+@@ -89,7 +89,7 @@ class DitDoubleBlockReplace:
+ class LastDitDoubleBlockReplace(DitDoubleBlockReplace):
+     def __call__(self, input_args, extra_options):
+         out = super().__call__(input_args, extra_options)
+-        transformer_options = extra_options["transformer_options"]
++        transformer_options = input_args["transformer_options"]
+         pulid_temp_attrs = transformer_options.get(PatchKeys.pulid_patch_key_attrs, {})
+         pulid_temp_attrs["double_blocks_txt"] = out['txt']
+         return out
+@@ -109,3 +109,3 @@ class DitSingleBlockReplace:
+     def __call__(self, input_args, extra_options):
+-        transformer_options = extra_options["transformer_options"]
++        transformer_options = input_args["transformer_options"]
+         pulid_temp_attrs = transformer_options.get(PatchKeys.pulid_patch_key_attrs, {})
+diff --git a/pulidflux.py b/pulidflux.py
+index 802cd1d..9771be3 100644
+--- a/pulidflux.py
++++ b/pulidflux.py
+@@ -403,6 +403,6 @@ class ApplyPulidFlux:
+         if len(model.get_wrappers(comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, wrappers_name)) == 0:
+             # Just add it once when connecting in series
+-            model.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, wrappers_name, pulid_outer_sample_wrappers_with_override)
++            model.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.OUTER_SAMPLE, wrappers_name, pulid_outer_sample_wrappers)
+         if len(model.get_wrappers(comfy.patcher_extension.WrappersMP.APPLY_MODEL, wrappers_name)) == 0:
+             # Just add it once when connecting in series
+             model.add_wrapper_with_key(comfy.patcher_extension.WrappersMP.APPLY_MODEL, wrappers_name, pulid_apply_model_wrappers)
