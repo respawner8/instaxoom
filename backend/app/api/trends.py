@@ -99,6 +99,32 @@ def get_client_fingerprint(request: Request, x_client_token: Optional[str] = Hea
     return request.client.host if request.client else "unknown_client"
 
 
+def apply_gender_to_prompt(prompt: str, gender: Optional[str]) -> str:
+    """
+    Injects clear gender-anchoring tokens to ensure FLUX does not default
+    to generating a female portrait when a male subject is provided.
+    """
+    if not gender:
+        return prompt
+
+    clean_gender = gender.strip().lower()
+    if clean_gender not in ("male", "female"):
+        return prompt
+
+    if clean_gender == "male":
+        # Check if already specified in the prompt
+        if any(term in prompt.lower() for term in [" young man", " male", " man ", " gentleman", " boy"]):
+            return prompt
+        return f"portrait of a young man, handsome male subject, {prompt}"
+
+    elif clean_gender == "female":
+        if any(term in prompt.lower() for term in [" young woman", " female", " woman ", " lady", " girl"]):
+            return prompt
+        return f"portrait of a young woman, beautiful female subject, {prompt}"
+
+    return prompt
+
+
 def build_workflow_prompt(
     positive_prompt: str,
     reference_image: Optional[str] = None,
@@ -106,10 +132,12 @@ def build_workflow_prompt(
     height: int = 1080,
     seed: Optional[int] = None,
     use_pulid: bool = False,
+    reference_images: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Constructs the ComfyUI workflow graph for Flux.1 Schnell.
-    Optionally attaches PuLID face likeness injection if reference image and models are present.
+    Constructs the ComfyUI workflow graph for Flux.1 Schnell / Dev.
+    Optionally attaches PuLID face likeness injection. If multiple reference images
+    are supplied, combines them using ComfyUI native ImageBatch nodes to pool face vectors.
     """
     if seed is None:
         seed = random.randint(1, 10**14)
@@ -184,15 +212,16 @@ def build_workflow_prompt(
     # Model input source (default: base UNet)
     model_source = ["1", 0]
 
+    # Resolve list of reference images (supporting both single and multiple photos)
+    if reference_images is not None:
+        images_list = [img for img in reference_images if img]
+    elif reference_image:
+        images_list = [reference_image]
+    else:
+        images_list = []
+
     # Optional PuLID Face Identity Injection
-    if use_pulid and reference_image:
-        prompt_graph["10"] = {
-            "inputs": {
-                "image": reference_image,
-                "upload": "image"
-            },
-            "class_type": "LoadImage"
-        }
+    if use_pulid and images_list:
         prompt_graph["11"] = {
             "inputs": {
                 "pulid_file": "pulid_flux_v0.9.1.safetensors"
@@ -209,13 +238,58 @@ def build_workflow_prompt(
             "inputs": {},
             "class_type": "PulidFluxEvaClipLoader"
         }
+
+        # Single image vs Multi-image batching
+        if len(images_list) == 1:
+            prompt_graph["10"] = {
+                "inputs": {
+                    "image": images_list[0],
+                    "upload": "image"
+                },
+                "class_type": "LoadImage"
+            }
+            pulid_image_source = ["10", 0]
+        else:
+            # Multi-image: create LoadImage node for each photo
+            for idx, img_name in enumerate(images_list):
+                node_id = f"10_{idx}"
+                prompt_graph[node_id] = {
+                    "inputs": {
+                        "image": img_name,
+                        "upload": "image"
+                    },
+                    "class_type": "LoadImage"
+                }
+
+            # Chain ImageBatch nodes to create a pooled batch tensor [B, H, W, C]
+            prompt_graph["20_0"] = {
+                "inputs": {
+                    "image1": ["10_0", 0],
+                    "image2": ["10_1", 0]
+                },
+                "class_type": "ImageBatch"
+            }
+            last_batch_node = "20_0"
+            for idx in range(2, len(images_list)):
+                batch_node_id = f"20_{idx - 1}"
+                prompt_graph[batch_node_id] = {
+                    "inputs": {
+                        "image1": [last_batch_node, 0],
+                        "image2": [f"10_{idx}", 0]
+                    },
+                    "class_type": "ImageBatch"
+                }
+                last_batch_node = batch_node_id
+
+            pulid_image_source = [last_batch_node, 0]
+
         prompt_graph["14"] = {
             "inputs": {
                 "model": ["1", 0],
                 "pulid_flux": ["11", 0],
                 "eva_clip": ["13", 0],
                 "face_analysis": ["12", 0],
-                "image": ["10", 0],
+                "image": pulid_image_source,
                 "weight": 0.85,
                 "start_at": 0.0,
                 "end_at": 1.0
@@ -297,12 +371,14 @@ async def generate_trend_image(
     custom_caption: Optional[str] = Form(None),
     prompt: Optional[str] = Form(None),
     theme_id: Optional[str] = Form("trend-retro-90s-yearbook"),
+    gender: Optional[str] = Form(None),
     x_client_token: Optional[str] = Header(None),
 ):
     """
     Accepts 1 to 5 user photos, executes the ComfyUI inference workflow,
     and returns the URL of the generated 4:5 Instagram portrait.
-    Supports real-time edited custom prompts and multi-theme selection.
+    Supports real-time edited custom prompts, multi-theme selection,
+    automatic gender conditioning, and multi-photo face pooling.
     """
     # 1. Validate photos
     if not (1 <= len(photos) <= 5):
@@ -353,27 +429,28 @@ async def generate_trend_image(
     selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
 
     if prompt and prompt.strip():
-        final_prompt = prompt.strip()
+        base_prompt = prompt.strip()
     else:
-        final_prompt = selected_theme["prompt_template"]
+        base_prompt = selected_theme["prompt_template"]
 
-    if custom_caption and custom_caption.strip() and custom_caption.strip() not in final_prompt:
-        final_prompt = f"{final_prompt}, {custom_caption.strip()}"
+    if custom_caption and custom_caption.strip() and custom_caption.strip() not in base_prompt:
+        base_prompt = f"{base_prompt}, {custom_caption.strip()}"
 
-    primary_ref_image = saved_filenames[0] if saved_filenames else None
+    # Apply gender anchoring to stop FLUX from defaulting to female when a male photo is provided
+    final_prompt = apply_gender_to_prompt(base_prompt, gender)
 
-    # 5. Build ComfyUI workflow graph (attempting PuLID first, falling back to base if weights absent)
+    # 5. Build ComfyUI workflow graph passing ALL uploaded photos for multi-face vector pooling
     workflow_prompt = build_workflow_prompt(
         positive_prompt=final_prompt,
-        reference_image=primary_ref_image,
+        reference_images=saved_filenames,
         width=width,
         height=height,
-        use_pulid=True if primary_ref_image else False,
+        use_pulid=True if saved_filenames else False,
     )
 
     # 6. Dispatch job to ComfyUI and await completion
     job_id = str(uuid.uuid4())
-    identity_conditioning = "pulid" if primary_ref_image else "none"
+    identity_conditioning = "pulid" if saved_filenames else "none"
     try:
         try:
             prompt_id = await comfy_client.queue_prompt(workflow_prompt, client_id=job_id)
@@ -384,7 +461,7 @@ async def generate_trend_image(
             print(f"[Notice] PuLID node dispatch notice ({queue_err}). Retrying with baseline diffusion...")
             fallback_prompt = build_workflow_prompt(
                 positive_prompt=final_prompt,
-                reference_image=None,
+                reference_images=None,
                 width=width,
                 height=height,
                 use_pulid=False,
@@ -409,6 +486,7 @@ async def generate_trend_image(
             "theme_id": selected_theme["id"],
             "theme_title": selected_theme["title"],
             "prompt_used": final_prompt,
+            "gender": gender,
             "aspect_ratio": "4:5",
             "dimensions": {"width": width, "height": height},
             "photos_received": len(saved_filenames),
