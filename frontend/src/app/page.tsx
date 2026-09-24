@@ -15,8 +15,11 @@ import {
   Sliders,
   RotateCcw,
   Tag,
-  X
+  X,
+  UserCheck,
+  Crop
 } from "lucide-react";
+import { autoCropAndDetectFace, ProcessedPhotoResult } from "@/lib/faceCropper";
 
 interface Theme {
   id: string;
@@ -88,6 +91,10 @@ export default function Home() {
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [isCropping, setIsCropping] = useState<boolean>(false);
+  const [croppingStatus, setCroppingStatus] = useState<string>("");
+  const [detectedGender, setDetectedGender] = useState<"male" | "female" | null>(null);
+  const [genderConfidence, setGenderConfidence] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
@@ -132,19 +139,66 @@ export default function Home() {
     setIsPromptEdited(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    const files = Array.from(e.target.files).slice(0, 5);
-    setUploadedFiles(files);
+    const rawFiles = Array.from(e.target.files).slice(0, 5);
+    if (rawFiles.length === 0) return;
 
-    const urls = files.map((file) => URL.createObjectURL(file));
-    setPreviewUrls(urls);
+    setIsCropping(true);
+    setCroppingStatus("Detecting faces & auto-cropping to 4:5 headshots...");
     setErrorMessage(null);
+
+    try {
+      const processedResults: ProcessedPhotoResult[] = [];
+      for (let i = 0; i < rawFiles.length; i++) {
+        setCroppingStatus(`Processing selfie ${i + 1} of ${rawFiles.length}...`);
+        const res = await autoCropAndDetectFace(rawFiles[i]);
+        processedResults.push(res);
+      }
+
+      setUploadedFiles(processedResults.map((r) => r.file));
+      setPreviewUrls(processedResults.map((r) => r.previewUrl));
+
+      // Calculate aggregated majority gender from all detected photos
+      const validGenders = processedResults.filter((r) => r.gender !== "unknown");
+      if (validGenders.length > 0) {
+        const maleResults = validGenders.filter((r) => r.gender === "male");
+        const femaleResults = validGenders.filter((r) => r.gender === "female");
+
+        if (maleResults.length >= femaleResults.length) {
+          const avgConf = Math.round(
+            maleResults.reduce((sum, r) => sum + r.genderConfidence, 0) / maleResults.length
+          );
+          setDetectedGender("male");
+          setGenderConfidence(avgConf);
+        } else {
+          const avgConf = Math.round(
+            femaleResults.reduce((sum, r) => sum + r.genderConfidence, 0) / femaleResults.length
+          );
+          setDetectedGender("female");
+          setGenderConfidence(avgConf);
+        }
+      } else {
+        setDetectedGender(null);
+        setGenderConfidence(null);
+      }
+    } catch (err: any) {
+      console.warn("Auto-cropper encountered error, using original uploads:", err);
+      setUploadedFiles(rawFiles);
+      setPreviewUrls(rawFiles.map((file) => URL.createObjectURL(file)));
+    } finally {
+      setIsCropping(false);
+      setCroppingStatus("");
+    }
   };
 
   const handleRemovePhoto = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
     setPreviewUrls((prev) => prev.filter((_, i) => i !== index));
+    if (uploadedFiles.length <= 1) {
+      setDetectedGender(null);
+      setGenderConfidence(null);
+    }
   };
 
   const handleGenerate = async () => {
@@ -164,10 +218,14 @@ export default function Home() {
 
     try {
       const formData = new FormData();
+      // Pass ALL uploaded and cropped photos to ComfyUI for multi-face pooling
       uploadedFiles.forEach((file) => formData.append("photos", file));
       formData.append("aspect_ratio", "4:5");
       formData.append("theme_id", selectedTheme.id);
       formData.append("prompt", customPrompt);
+      if (detectedGender) {
+        formData.append("gender", detectedGender);
+      }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/api/trends/generate`, {
@@ -271,29 +329,78 @@ export default function Home() {
                 multiple
                 accept="image/*"
                 onChange={handleFileChange}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                disabled={isCropping || isGenerating}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
               />
               <div className="flex flex-col items-center gap-2 pointer-events-none">
                 <div className="w-12 h-12 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
-                  <Upload className="w-5 h-5 text-neutral-300" />
+                  {isCropping ? (
+                    <RefreshCw className="w-5 h-5 text-rose-400 animate-spin" />
+                  ) : (
+                    <Upload className="w-5 h-5 text-neutral-300" />
+                  )}
                 </div>
                 <p className="text-sm font-medium text-neutral-300">
-                  {uploadedFiles.length > 0
-                    ? `${uploadedFiles.length} photo(s) selected`
+                  {isCropping
+                    ? croppingStatus
+                    : uploadedFiles.length > 0
+                    ? `${uploadedFiles.length} photo(s) selected (4:5 Headshots Auto-Framed)`
                     : "Tap to select or drop photos here"}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  Upload clear selfies from different angles to pool facial vectors
+                  Upload 1 to 5 clear selfies &bull; Faces are automatically detected, cropped to 4:5 headshots, and pooled
                 </p>
               </div>
             </div>
+
+            {/* Detected Gender Badge & Manual Override */}
+            {detectedGender && (
+              <div className="mt-3 p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-semibold text-neutral-200">
+                    Auto-Detected Subject:
+                  </span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 capitalize">
+                    {detectedGender} {genderConfidence ? `(${genderConfidence}%)` : ""}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDetectedGender("male")}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                      detectedGender === "male"
+                        ? "bg-rose-500/20 border-rose-500 text-rose-300 font-semibold"
+                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Male
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDetectedGender("female")}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                      detectedGender === "female"
+                        ? "bg-rose-500/20 border-rose-500 text-rose-300 font-semibold"
+                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    Female
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Upload Previews */}
             {previewUrls.length > 0 && (
               <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
                 {previewUrls.map((url, idx) => (
-                  <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-neutral-700 flex-shrink-0 group">
+                  <div key={idx} className="relative w-20 h-24 rounded-xl overflow-hidden border border-neutral-700 flex-shrink-0 group shadow-md">
                     <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-xs py-0.5 text-[9px] text-center text-rose-300 font-medium">
+                      4:5 Crop
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleRemovePhoto(idx)}

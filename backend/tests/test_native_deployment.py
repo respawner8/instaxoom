@@ -120,7 +120,7 @@ class NativeDeploymentTests(unittest.TestCase):
         self.assertEqual(graph["9"]["inputs"]["images"], ["8", 0])
         self.assertEqual(sum(node["class_type"] == "KSampler" for node in graph.values()), 1)
 
-    def test_multiple_photos_use_first_reference_and_original_output_shape(self):
+    def test_multiple_photos_batched_in_workflow(self):
         history = {"outputs": {"9": {"images": [{"filename": "portrait.png"}]}}}
         with (
             patch.object(comfy_client, "upload_image", new_callable=AsyncMock) as upload,
@@ -130,16 +130,40 @@ class NativeDeploymentTests(unittest.TestCase):
             response = self.client.post(
                 "/api/trends/generate",
                 files=[("photos", ("first.png", b"first")), ("photos", ("second.png", b"second"))],
-                data={"prompt": "Custom portrait"},
+                data={"prompt": "Custom portrait", "gender": "male"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["photos_received"], 2)
+        self.assertEqual(response.json()["gender"], "male")
         self.assertEqual(response.json()["dimensions"], {"width": 864, "height": 1080})
         self.assertEqual(response.json()["identity_conditioning"], "pulid")
         graph = queue.await_args.args[0]
-        self.assertEqual(graph["10"]["inputs"]["image"], upload.await_args_list[0].args[1])
-        self.assertEqual(graph["5"]["inputs"]["text"], "Custom portrait")
+        # Multi-photo uses ImageBatch chaining
+        self.assertEqual(graph["10_0"]["inputs"]["image"], upload.await_args_list[0].args[1])
+        self.assertEqual(graph["10_1"]["inputs"]["image"], upload.await_args_list[1].args[1])
+        self.assertEqual(graph["20_0"]["class_type"], "ImageBatch")
+        self.assertEqual(graph["20_0"]["inputs"]["image1"], ["10_0", 0])
+        self.assertEqual(graph["20_0"]["inputs"]["image2"], ["10_1", 0])
+        self.assertEqual(graph["14"]["inputs"]["image"], ["20_0", 0])
+        self.assertIn("young man", graph["5"]["inputs"]["text"])
         self.assertEqual(graph["7"]["inputs"]["model"], ["14", 0])
+
+    def test_gender_anchoring_female(self):
+        history = {"outputs": {"9": {"images": [{"filename": "portrait.png"}]}}}
+        with (
+            patch.object(comfy_client, "upload_image", new_callable=AsyncMock),
+            patch.object(comfy_client, "queue_prompt", new_callable=AsyncMock, return_value="prompt-id") as queue,
+            patch.object(comfy_client, "wait_for_completion", new_callable=AsyncMock, return_value=history),
+        ):
+            response = self.client.post(
+                "/api/trends/generate",
+                files={"photos": ("reference.png", b"reference", "image/png")},
+                data={"prompt": "Custom portrait", "gender": "female"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["gender"], "female")
+        graph = queue.await_args.args[0]
+        self.assertIn("young woman", graph["5"]["inputs"]["text"])
 
 
 class CompletionTests(unittest.IsolatedAsyncioTestCase):
