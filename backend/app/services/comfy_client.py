@@ -4,6 +4,7 @@ import time
 from typing import Dict, Any, Optional
 import httpx
 import websockets
+from websockets.exceptions import WebSocketException
 from app.core.config import settings
 
 
@@ -55,32 +56,40 @@ class ComfyUIClient:
         Listens to ComfyUI WebSocket messages until the prompt finishes.
         Falls back to HTTP polling if WebSocket is unavailable or disconnects.
         """
-        start_time = time.time()
+        start_time = time.monotonic()
 
         try:
             ws_uri = f"{self.ws_url}?clientId={client_id}"
             async with websockets.connect(ws_uri, open_timeout=10.0) as ws:
-                while time.time() - start_time < timeout_seconds:
-                    remaining_time = max(1.0, timeout_seconds - (time.time() - start_time))
+                while time.monotonic() - start_time < timeout_seconds:
+                    remaining_time = timeout_seconds - (time.monotonic() - start_time)
                     try:
-                        out = await asyncio.wait_for(ws.recv(), timeout=remaining_time)
+                        out = await asyncio.wait_for(ws.recv(), timeout=min(2.0, remaining_time))
                     except asyncio.TimeoutError:
-                        break
+                        # A cached prompt can finish before the WebSocket connects.
+                        history = await self.get_history(prompt_id)
+                        if history:
+                            return history
+                        continue
 
                     if isinstance(out, str):
                         message = json.loads(out)
                         msg_type = message.get("type")
                         data = message.get("data", {})
 
+                        if msg_type == "execution_error" and data.get("prompt_id") == prompt_id:
+                            raise RuntimeError(
+                                f"ComfyUI execution failed: {data.get('exception_message', data)}"
+                            )
                         if msg_type == "executing":
                             # If node is None and prompt_id matches, execution is complete
                             if data.get("node") is None and data.get("prompt_id") == prompt_id:
                                 return await self.get_history(prompt_id)
-        except Exception as ws_err:
+        except (WebSocketException, OSError, asyncio.TimeoutError) as ws_err:
             print(f"[ComfyUIClient] WebSocket notice: {ws_err}. Falling back to polling.")
 
         # Polling fallback: check /history/{prompt_id} periodically
-        while time.time() - start_time < timeout_seconds:
+        while time.monotonic() - start_time < timeout_seconds:
             history = await self.get_history(prompt_id)
             if history and "outputs" in history:
                 return history

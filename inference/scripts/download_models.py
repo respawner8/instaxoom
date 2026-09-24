@@ -16,9 +16,10 @@ UNET_DIR = MODELS_DIR / "unet"
 CLIP_DIR = MODELS_DIR / "clip"
 VAE_DIR = MODELS_DIR / "vae"
 PULID_DIR = MODELS_DIR / "pulid"
+FACEXLIB_DIR = MODELS_DIR / "facexlib"
 INSIGHTFACE_DIR = MODELS_DIR / "insightface" / "models" / "antelopev2"
 
-for d in [CHECKPOINTS_DIR, UNET_DIR, CLIP_DIR, VAE_DIR, PULID_DIR, INSIGHTFACE_DIR]:
+for d in [CHECKPOINTS_DIR, UNET_DIR, CLIP_DIR, VAE_DIR, PULID_DIR, INSIGHTFACE_DIR, FACEXLIB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 MODELS = [
@@ -65,6 +66,18 @@ MODELS = [
         "url": "https://huggingface.co/QuanSun/EVA-CLIP/resolve/main/EVA02_CLIP_L_336_psz14_s6B.pt",
         "path": CLIP_DIR / "EVA02_CLIP_L_336_psz14_s6B.pt",
         "min_size_mb": 500,
+    },
+    {
+        "name": "FaceXLib RetinaFace detector",
+        "url": "https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth",
+        "path": FACEXLIB_DIR / "detection_Resnet50_Final.pth",
+        "min_size_mb": 10,
+    },
+    {
+        "name": "FaceXLib BiSeNet parser",
+        "url": "https://github.com/xinntao/facexlib/releases/download/v0.2.0/parsing_bisenet.pth",
+        "path": FACEXLIB_DIR / "parsing_bisenet.pth",
+        "min_size_mb": 10,
     },
     # InsightFace AntelopeV2 models
     {

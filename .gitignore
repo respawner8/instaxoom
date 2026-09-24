@@ -59,6 +59,7 @@ output/
 outputs/
 temp/
 uploads/
+runtime/
 *.png
 *.jpg
 *.jpeg

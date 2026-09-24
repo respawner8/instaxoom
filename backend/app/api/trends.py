@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import uuid
@@ -5,7 +6,7 @@ import aiofiles
 import httpx
 from datetime import date
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -67,6 +68,21 @@ THEMES = [
 TODAY_TREND = THEMES[0]
 
 OUTPUTS_DIR = os.path.join(os.getcwd(), "outputs")
+generation_lock = asyncio.Lock()
+
+
+async def generation_capacity():
+    if not settings.SINGLE_GENERATION_AT_A_TIME:
+        yield
+        return
+    if generation_lock.locked():
+        raise HTTPException(
+            status_code=429,
+            detail="The image generator is busy. Please try again shortly.",
+            headers={"Retry-After": "30"},
+        )
+    async with generation_lock:
+        yield
 
 
 def get_client_fingerprint(request: Request, x_client_token: Optional[str] = Header(None)) -> str:
@@ -185,7 +201,7 @@ def build_workflow_prompt(
         }
         prompt_graph["12"] = {
             "inputs": {
-                "provider": "CUDA"
+                "provider": settings.PULID_PROVIDER
             },
             "class_type": "PulidFluxInsightFaceLoader"
         }
@@ -273,7 +289,7 @@ async def check_quota(request: Request, x_client_token: Optional[str] = Header(N
     }
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(generation_capacity)])
 async def generate_trend_image(
     request: Request,
     photos: List[UploadFile] = File(...),
@@ -303,19 +319,28 @@ async def generate_trend_image(
     saved_filenames = []
 
     for photo in photos:
+        limit = settings.MAX_PHOTO_BYTES
+        if limit and photo.size is not None and photo.size > limit:
+            raise HTTPException(status_code=413, detail=f"Each photo must be at most {limit} bytes.")
+        content = await photo.read(limit + 1 if limit else -1)
+        if limit and len(content) > limit:
+            raise HTTPException(status_code=413, detail=f"Each photo must be at most {limit} bytes.")
         ext = os.path.splitext(photo.filename)[1] or ".jpg"
         unique_name = f"user_{uuid.uuid4().hex[:12]}{ext}"
         dest_path = os.path.join(upload_dir, unique_name)
         async with aiofiles.open(dest_path, "wb") as buffer:
-            content = await photo.read()
             await buffer.write(content)
 
         # Upload directly to ComfyUI input directory (works seamlessly in both container & native host mode)
         try:
             await comfy_client.upload_image(content, unique_name)
-        except Exception as upload_err:
-            # If ComfyUI shares the local filesystem or volume, this is non-fatal
-            pass
+        except (httpx.HTTPError, RuntimeError) as upload_err:
+            if settings.REQUIRE_PULID:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Could not upload the reference image to ComfyUI: {upload_err}",
+                ) from upload_err
+            print(f"[Upload Warning] Using the shared input directory after upload failed: {upload_err}")
 
         saved_filenames.append(unique_name)
 
@@ -348,10 +373,13 @@ async def generate_trend_image(
 
     # 6. Dispatch job to ComfyUI and await completion
     job_id = str(uuid.uuid4())
+    identity_conditioning = "pulid" if primary_ref_image else "none"
     try:
         try:
             prompt_id = await comfy_client.queue_prompt(workflow_prompt, client_id=job_id)
         except Exception as queue_err:
+            if settings.REQUIRE_PULID:
+                raise
             # If PuLID node is missing on server, automatically fallback to base UNet graph
             print(f"[Notice] PuLID node dispatch notice ({queue_err}). Retrying with baseline diffusion...")
             fallback_prompt = build_workflow_prompt(
@@ -362,8 +390,11 @@ async def generate_trend_image(
                 use_pulid=False,
             )
             prompt_id = await comfy_client.queue_prompt(fallback_prompt, client_id=job_id)
+            identity_conditioning = "none"
 
-        history = await comfy_client.wait_for_completion(prompt_id, client_id=job_id, timeout_seconds=120.0)
+        history = await comfy_client.wait_for_completion(
+            prompt_id, client_id=job_id, timeout_seconds=settings.INFERENCE_TIMEOUT_SECONDS
+        )
         output_filename = comfy_client.extract_output_filename(history)
 
         if not output_filename:
@@ -381,6 +412,7 @@ async def generate_trend_image(
             "aspect_ratio": "4:5",
             "dimensions": {"width": width, "height": height},
             "photos_received": len(saved_filenames),
+            "identity_conditioning": identity_conditioning,
             "image_url": image_url,
             "quota": {
                 "remaining_generations": 999,

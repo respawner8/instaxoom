@@ -20,7 +20,7 @@ Comprehensive architecture, setup, and deployment guides are available in the [`
 ## Key Features
 
 - **Daily Curated Trends:** Each day features a unified aesthetic drop (custom prompt tuning, style LoRAs, and framing).
-- **Multi-Photo Face Likeness:** Accepts 1 to 5 photos. Uploading 3–5 selfies utilizes face-embedding pooling to cancel lighting inconsistencies and produce high-resemblance results.
+- **PuLID Face Likeness:** Accepts 1 to 5 photos; the current API uses the first as the facial reference. Likeness is approximate, not pixel-identical face preservation.
 - **Instagram-First Export:** Pre-configured 4:5 feed portrait format (maximizing mobile screen area) and native Web Share API integration to post directly to Instagram.
 - **Low-VRAM AI Engine:** Headless ComfyUI microservice powered by **Flux.1 [schnell] Q4_K_S GGUF** (~6.3 GB) with CPU-offload optimizations to fit comfortably within an **8GB RTX 4060** or cloud GPU instances.
 - **Unauthenticated Rate Limiting:** Sliding-window Redis token bucket granting users 3 free daily generations without requiring upfront signup.
@@ -61,6 +61,9 @@ instaXoom/
 ---
 
 ## Quickstart (Local Development)
+
+The steps below use Docker and NVIDIA. For a Docker-free deployment on AMD
+Radeon 8060S, follow the [native Windows AMD guide](documentation/deployment.md#9-native-windows-on-amd-ryzen-ai-max--radeon-8060s).
 
 ### 1. Prerequisites
 - [Docker Desktop](https://www.docker.com/) with WSL2 backend (on Windows)

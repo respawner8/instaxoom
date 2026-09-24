@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Literal
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -33,6 +34,11 @@ class Settings(BaseSettings):
     COMFYUI_PORT: int = 8188
     COMFYUI_URL: str = "http://inference:8188"
     COMFYUI_WS_URL: str = "ws://inference:8188/ws"
+    INFERENCE_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0)
+    PULID_PROVIDER: Literal["CPU", "CUDA", "ROCM"] = "CUDA"
+    REQUIRE_PULID: bool = False
+    SINGLE_GENERATION_AT_A_TIME: bool = False
+    MAX_PHOTO_BYTES: int = Field(default=0, ge=0)
 
     # Model defaults
     FLUX_MODEL_NAME: str = "flux1-schnell-Q4_K_S.gguf"
