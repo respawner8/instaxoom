@@ -171,22 +171,25 @@ export default function Home() {
     const rawFiles = Array.from(e.target.files).slice(0, maxFiles);
     if (rawFiles.length === 0) return;
 
-    setIsCropping(true);
-    setCroppingStatus(
-      isAzure
-        ? "Detecting face & auto-cropping to 4:5 headshot..."
-        : "Detecting faces & auto-cropping to 4:5 headshots..."
-    );
     setErrorMessage(null);
+
+    // In Azure Cloud mode, bypass face-cropping: send original uncropped photo directly to Azure images.edit
+    if (isAzure) {
+      setUploadedFiles(rawFiles);
+      setPreviewUrls(rawFiles.map((file) => URL.createObjectURL(file)));
+      setDetectedGender(null);
+      setGenderConfidence(null);
+      return;
+    }
+
+    // Local FLUX mode: Run auto-crop & multi-face detection for PuLID
+    setIsCropping(true);
+    setCroppingStatus("Detecting faces & auto-cropping to 4:5 headshots...");
 
     try {
       const processedResults: ProcessedPhotoResult[] = [];
       for (let i = 0; i < rawFiles.length; i++) {
-        setCroppingStatus(
-          isAzure
-            ? "Processing face portrait..."
-            : `Processing selfie ${i + 1} of ${rawFiles.length}...`
-        );
+        setCroppingStatus(`Processing selfie ${i + 1} of ${rawFiles.length}...`);
         const res = await autoCropAndDetectFace(rawFiles[i]);
         processedResults.push(res);
       }
@@ -553,7 +556,7 @@ export default function Home() {
                 </p>
                 <p className="text-xs text-neutral-500">
                   {isAzure
-                    ? "Upload 1 clear portrait photo • Auto-detected and cropped to 4:5 headshot for Azure Foundry"
+                    ? "Upload 1 photo • Full original face, hair & shoulders preserved for Azure AI"
                     : "Upload 1 to 5 clear selfies • Faces are automatically detected, cropped to 4:5 headshots, and pooled"}
                 </p>
               </div>
