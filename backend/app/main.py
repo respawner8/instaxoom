@@ -9,11 +9,11 @@ app = FastAPI(
     description="Fullstack AI Image Generation for Instagram Trends",
 )
 
-# CORS configuration
+# CORS configuration - Allow localhost and all deployed frontends
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
+    allow_origin_regex=r"^https?://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
