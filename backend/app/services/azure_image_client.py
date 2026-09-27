@@ -90,7 +90,7 @@ class AzureImageClient:
         deployment_name = settings.AZURE_AI_DEPLOYMENT
         size = "1024x1024"
 
-        # Attempt 1: Using official OpenAI async SDK
+        # Attempt 1: Using client.images.edit to preserve the user's face likeness
         try:
             from openai import AsyncOpenAI
 
@@ -100,12 +100,27 @@ class AzureImageClient:
                 timeout=90.0,
             )
 
-            img_resp = await client.images.generate(
-                model=deployment_name,
-                prompt=prompt,
-                n=1,
-                size=size,
+            edit_prompt = (
+                f"Transform the person in the photo into this portrait aesthetic while strictly preserving their face, "
+                f"facial structure, and likeness: {prompt}"
             )
+
+            # Try images.edit with user photo
+            try:
+                img_resp = await client.images.edit(
+                    model=deployment_name,
+                    image=("user_face.png", photo_bytes, "image/png"),
+                    prompt=edit_prompt,
+                    size=size,
+                )
+            except Exception as edit_err:
+                print(f"[AzureImageClient Edit Warning] images.edit failed ({edit_err}), trying images.generate...")
+                img_resp = await client.images.generate(
+                    model=deployment_name,
+                    prompt=prompt,
+                    n=1,
+                    size=size,
+                )
 
             if not img_resp.data:
                 raise RuntimeError("Azure AI returned empty image data array.")
@@ -177,6 +192,12 @@ class AzureImageClient:
                         status_code=429,
                         detail="Azure rate limit reached (2 images/min). Please try again shortly.",
                         headers={"Retry-After": retry_after},
+                    )
+
+                if "moderation_blocked" in response.text:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="The generated image was flagged by Azure's content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
                     )
 
                 raise HTTPException(

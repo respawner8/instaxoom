@@ -25,7 +25,7 @@ THEMES = [
         "category": "Vintage",
         "tagline": "Authentic 1994 vintage yearbook portrait with film grain, soft flash, and blue studio backdrop.",
         "hashtags": ["#90sYearbook", "#VintageAesthetic", "#instaXoom", "#RetroPortraits"],
-        "prompt_template": "1990s high school yearbook photo, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling high school student, authentic 90s hair and collar shirt",
+        "prompt_template": "1990s retro vintage yearbook portrait, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling adult subject, authentic 90s hair and collar shirt",
         "preview_image_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
     },
     {
@@ -114,14 +114,14 @@ def apply_gender_to_prompt(prompt: str, gender: Optional[str]) -> str:
 
     if clean_gender == "male":
         # Check if already specified in the prompt
-        if any(term in prompt.lower() for term in [" young man", " male", " man ", " gentleman", " boy"]):
+        if any(term in prompt.lower() for term in [" male", " man ", " gentleman"]):
             return prompt
-        return f"portrait of a young man, handsome male subject, {prompt}"
+        return f"portrait of a handsome man, male subject, {prompt}"
 
     elif clean_gender == "female":
-        if any(term in prompt.lower() for term in [" young woman", " female", " woman ", " lady", " girl"]):
+        if any(term in prompt.lower() for term in [" female", " woman ", " lady"]):
             return prompt
-        return f"portrait of a young woman, beautiful female subject, {prompt}"
+        return f"portrait of an elegant woman, female subject, {prompt}"
 
     return prompt
 
