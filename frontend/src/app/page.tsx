@@ -289,7 +289,7 @@ export default function Home() {
     setErrorMessage(null);
     setLiveQueuePosition(null);
     setLiveEstSeconds(18);
-    setLiveStatusMessage(isAzure ? "Connecting to Azure AI generator..." : "Starting local FLUX generation...");
+    setLiveStatusMessage("Connecting to AI generator...");
 
     // Dynamic progression while inference processes
     const interval = setInterval(() => {
@@ -571,35 +571,20 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          {isAzure ? (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-950/70 border border-sky-800/70 text-xs font-medium text-sky-200 shadow-sm">
-              <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400" : "bg-sky-400"} animate-pulse`} />
-              <Cloud className="w-3.5 h-3.5 text-sky-400" />
-              <span>Azure Cloud &bull; {queueStatus ? queueStatus.status_text : "GPT-Image-2.5 Flare"}</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800/70 text-xs font-medium text-emerald-200 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Local GPU &bull; FLUX.1 + PuLID</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 border border-neutral-800 text-xs font-medium text-neutral-200 shadow-sm">
+            <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400" : "bg-emerald-400"} animate-pulse`} />
+            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+            <span>AI Studio &bull; {queueStatus ? queueStatus.status_text : "Online"}</span>
+          </div>
         </div>
       </header>
 
       {/* Hero / Header */}
       <div className="max-w-4xl mx-auto w-full px-4 pt-10 pb-16 flex-1 flex flex-col items-center">
-        {isAzure ? (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-sky-500/10 via-indigo-500/10 to-purple-500/10 border border-sky-500/20 text-sky-300 text-xs font-semibold mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-            <span>AI PORTRAIT GENERATOR &bull; AZURE AI FOUNDRY (GPT-IMAGE 2.5 FLARE)</span>
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-            <span>AI PORTRAIT GENERATOR &bull; FLUX.1 + PuLID</span>
-          </div>
-        )}
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
+          <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+          <span>AI PORTRAIT GENERATOR &bull; DAILY INSTAGRAM TRENDS</span>
+        </div>
 
         <h1 className="text-4xl md:text-5xl font-black text-center tracking-tight mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
           {selectedTheme.title}
@@ -617,20 +602,13 @@ export default function Home() {
               <label className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
                 <span>{isAzure ? "1. Upload Face Portrait" : "1. Upload Face Photos"}</span>
                 <span className="text-xs font-normal text-neutral-500">
-                  {isAzure ? "(1 photo max • Cloud Mode)" : "(1 to 5 photos)"}
+                  {isAzure ? "(1 photo max)" : "(1 to 5 photos)"}
                 </span>
               </label>
-              {isAzure ? (
-                <span className="text-xs text-sky-400 font-medium flex items-center gap-1">
-                  <Cloud className="w-3.5 h-3.5" />
-                  Azure Flare Likeness
-                </span>
-              ) : (
-                <span className="text-xs text-rose-400 font-medium flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5" />
-                  PuLID Face Likeness
-                </span>
-              )}
+              <span className="text-xs text-rose-400 font-medium flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                HD Face Likeness
+              </span>
             </div>
 
             <div className="border-2 border-dashed border-neutral-800 hover:border-neutral-700 transition rounded-2xl p-6 text-center bg-neutral-950/40 relative cursor-pointer">
@@ -646,8 +624,6 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
                   {isCropping ? (
                     <RefreshCw className="w-5 h-5 text-rose-400 animate-spin" />
-                  ) : isAzure ? (
-                    <Cloud className="w-5 h-5 text-sky-400" />
                   ) : (
                     <Upload className="w-5 h-5 text-neutral-300" />
                   )}
@@ -665,7 +641,7 @@ export default function Home() {
                 </p>
                 <p className="text-xs text-neutral-500">
                   {isAzure
-                    ? "Upload 1 photo • Full original face, hair & shoulders preserved for Azure AI"
+                    ? "Upload 1 photo • Full original face, hair & shoulders preserved for portrait styling"
                     : "Upload 1 to 5 clear selfies • Faces are automatically detected, cropped to 4:5 headshots, and pooled"}
                 </p>
               </div>
@@ -930,7 +906,7 @@ export default function Home() {
               <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 pt-1">
                 <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
                 <span>
-                  Live Queue: <strong className="text-neutral-200">{queueStatus ? queueStatus.status_text : "Ready (0 waiting)"}</strong> (Auto-sequenced 30s queue)
+                  Live Queue: <strong className="text-neutral-200">{queueStatus ? queueStatus.status_text : "Ready (0 waiting)"}</strong>
                 </span>
               </div>
             )}
