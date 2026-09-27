@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import random
 import uuid
@@ -7,7 +8,7 @@ import httpx
 from datetime import date
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.services.comfy_client import comfy_client
@@ -330,6 +331,22 @@ def build_workflow_prompt(
     return prompt_graph
 
 
+@router.get("/queue-status")
+async def get_queue_status():
+    """
+    Returns live queue metrics and estimated wait time for new requests.
+    """
+    if settings.ENGINE == "azure":
+        return azure_image_client.get_queue_status()
+    return {
+        "active_jobs": 0,
+        "waiting_jobs": 0,
+        "total_in_queue": 0,
+        "estimated_wait_seconds": 0,
+        "status_text": "Ready (Local GPU)",
+    }
+
+
 @router.get("/today")
 async def get_today_trend(request: Request, x_client_token: Optional[str] = Header(None)):
     """
@@ -341,7 +358,7 @@ async def get_today_trend(request: Request, x_client_token: Optional[str] = Head
         "engine": settings.ENGINE,
         "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
-        "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM if settings.ENGINE == "azure" else None,
+        "queue_enabled": True if settings.ENGINE == "azure" else False,
         "quota": {
             "remaining_generations": 999,
             "reset_in_seconds": 86400,
@@ -377,12 +394,14 @@ async def generate_trend_image(
     theme_id: Optional[str] = Form("trend-retro-90s-yearbook"),
     gender: Optional[str] = Form(None),
     engine: Optional[str] = Form(None),
+    stream: Optional[bool] = Form(False),
     x_client_token: Optional[str] = Header(None),
 ):
     """
     Accepts user photo(s), executes the inference workflow via either
     local FLUX.1 (ComfyUI + PuLID) or cloud Azure AI Foundry (gpt-image-2.5-flare),
     and returns the URL of the generated 4:5 Instagram portrait.
+    Supports real-time SSE streaming for live queue position and countdown tracking.
     """
     active_engine = (engine or settings.ENGINE).lower()
 
@@ -409,12 +428,86 @@ async def generate_trend_image(
             base_prompt = f"{base_prompt}, {custom_caption.strip()}"
 
         final_prompt = apply_gender_to_prompt(base_prompt, gender)
-
         job_id = str(uuid.uuid4())
+
+        is_stream = stream or request.query_params.get("stream") == "true"
+        if is_stream:
+            async def event_generator():
+                event_queue: asyncio.Queue = asyncio.Queue()
+
+                async def on_status_update(event_data: Dict[str, Any]):
+                    await event_queue.put(event_data)
+
+                async def run_generation():
+                    try:
+                        filename = await azure_image_client.generate_portrait(
+                            photo_bytes=photo_bytes,
+                            prompt=final_prompt,
+                            aspect_ratio=aspect_ratio,
+                            job_id=job_id,
+                            on_status=on_status_update,
+                        )
+                        await event_queue.put({
+                            "type": "completed",
+                            "status": "completed",
+                            "job_id": job_id,
+                            "theme_id": selected_theme["id"],
+                            "theme_title": selected_theme["title"],
+                            "prompt_used": final_prompt,
+                            "gender": gender,
+                            "aspect_ratio": "4:5",
+                            "engine_used": "azure_gpt_image_2.5_flare",
+                            "photos_received": 1,
+                            "image_url": f"/api/trends/outputs/{filename}",
+                            "queue_active": True,
+                            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+                        })
+                    except HTTPException as http_exc:
+                        await event_queue.put({
+                            "type": "error",
+                            "status_code": http_exc.status_code,
+                            "detail": str(http_exc.detail),
+                        })
+                    except Exception as exc:
+                        await event_queue.put({
+                            "type": "error",
+                            "status_code": 500,
+                            "detail": f"Azure generation failed: {str(exc)}",
+                        })
+
+                gen_task = asyncio.create_task(run_generation())
+
+                try:
+                    while True:
+                        try:
+                            event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                            yield f"data: {json.dumps(event)}\n\n"
+                            if event.get("type") in ("completed", "error"):
+                                break
+                        except asyncio.TimeoutError:
+                            yield ": keep-alive\n\n"
+
+                        if gen_task.done() and event_queue.empty():
+                            break
+                finally:
+                    if not gen_task.done():
+                        gen_task.cancel()
+
+            return StreamingResponse(
+                event_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         output_filename = await azure_image_client.generate_portrait(
             photo_bytes=photo_bytes,
             prompt=final_prompt,
             aspect_ratio=aspect_ratio,
+            job_id=job_id,
         )
 
         return {
@@ -428,10 +521,7 @@ async def generate_trend_image(
             "engine_used": "azure_gpt_image_2.5_flare",
             "photos_received": 1,
             "image_url": f"/api/trends/outputs/{output_filename}",
-            "quota": {
-                "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM,
-                "cooldown_seconds": 30,
-            },
+            "queue_active": True,
             "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
         }
 
