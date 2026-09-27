@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import Field
 
 
