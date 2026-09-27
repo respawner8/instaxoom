@@ -3,7 +3,7 @@ import base64
 import os
 import time
 import uuid
-from typing import Optional
+from typing import Optional, Callable, Dict, Any, List
 from urllib.parse import urlparse
 import aiofiles
 import httpx
@@ -43,8 +43,9 @@ class AzureImageClient:
     Client for Microsoft Azure AI Foundry gpt-image-2.5-flare model
     via the OpenAI-compatible `/openai/v1` API.
 
-    Maintains a sequential queue ensuring requests are spaced by at least 30 seconds
+    Maintains a sequential FIFO queue ensuring requests are spaced by at least 30 seconds
     (or starts immediately if the previous request took >= 30 seconds).
+    Tracks live queue positions, estimated wait times, and provides real-time status callbacks.
     Automatically retries with a 30-second backoff if the model returns a failure
     or is throttled.
     """
@@ -53,6 +54,86 @@ class AzureImageClient:
         self._queue_lock = asyncio.Lock()
         self._last_dispatch_time: float = 0.0
         self.MIN_INTERVAL_SECONDS: float = 30.0
+        self.ESTIMATED_GEN_DURATION: float = 18.0
+
+        # Live queue tracking
+        self._active_job_id: Optional[str] = None
+        self._active_job_start: float = 0.0
+        self._waiting_jobs: List[Dict[str, Any]] = []
+
+    def calculate_estimated_wait(self, position: int) -> int:
+        """
+        Calculates estimated seconds remaining.
+        position = 0: currently processing (active job)
+        position >= 1: waiting in queue
+        """
+        now = time.time()
+        if position == 0:
+            if self._active_job_start > 0:
+                elapsed = now - self._active_job_start
+                return max(1, int(self.ESTIMATED_GEN_DURATION - elapsed))
+            return int(self.ESTIMATED_GEN_DURATION)
+
+        # For waiting jobs:
+        # Time until currently active job finishes or 30s spacing elapses
+        if self._last_dispatch_time > 0:
+            spacing_remaining = max(0.0, self.MIN_INTERVAL_SECONDS - (now - self._last_dispatch_time))
+        else:
+            spacing_remaining = 0.0
+
+        if self._active_job_id is not None:
+            active_gen_remaining = max(1.0, self.ESTIMATED_GEN_DURATION - (now - self._active_job_start))
+            first_slot_wait = max(spacing_remaining, active_gen_remaining)
+        else:
+            first_slot_wait = spacing_remaining
+
+        wait_before_dispatch = first_slot_wait + (position - 1) * self.MIN_INTERVAL_SECONDS
+        total_estimate = wait_before_dispatch + self.ESTIMATED_GEN_DURATION
+        return max(3, int(total_estimate))
+
+    def get_queue_status(self) -> Dict[str, Any]:
+        """
+        Returns live queue metrics for public status endpoint.
+        """
+        waiting_count = len(self._waiting_jobs)
+        is_active = self._active_job_id is not None
+        new_pos = waiting_count + (1 if is_active else 0)
+        est_seconds = 0 if not is_active else self.calculate_estimated_wait(new_pos)
+
+        if not is_active and waiting_count == 0:
+            status_text = "Ready (0 waiting)"
+        elif is_active and waiting_count == 0:
+            status_text = f"1 active (~{est_seconds}s wait)"
+        else:
+            status_text = f"{waiting_count + 1} in queue (~{est_seconds}s wait)"
+
+        return {
+            "active_jobs": 1 if is_active else 0,
+            "waiting_jobs": waiting_count,
+            "total_in_queue": waiting_count + (1 if is_active else 0),
+            "estimated_wait_seconds": est_seconds,
+            "status_text": status_text,
+        }
+
+    async def _broadcast_queue_updates(self):
+        """Notifies all waiting jobs of their updated queue positions and estimates."""
+        for idx, item in enumerate(list(self._waiting_jobs)):
+            cb = item.get("on_status")
+            if cb:
+                pos = idx + 1
+                est = self.calculate_estimated_wait(pos)
+                try:
+                    res = cb({
+                        "type": "queue_update",
+                        "job_id": item["job_id"],
+                        "position": pos,
+                        "estimated_seconds": est,
+                        "message": f"In queue (#{pos} in line) — Est. wait: ~{est}s",
+                    })
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as b_err:
+                    print(f"[Azure Queue] Broadcast error: {b_err}")
 
     def _normalize_base_url(self, raw_endpoint: str) -> str:
         """
@@ -220,10 +301,13 @@ class AzureImageClient:
         prompt: str,
         aspect_ratio: str = "4:5",
         max_retries: int = 3,
+        job_id: Optional[str] = None,
+        on_status: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> str:
         """
         Enters the sequential queue, waits until at least 30s have passed since the last
         request started (or starts immediately if the last request took >=30s).
+        Emits live status events (queued, spacing_wait, processing, retrying, completed).
         If the model returns a failure or is throttled, waits 30s and retries.
         """
         if not settings.AZURE_AI_API_KEY:
@@ -233,7 +317,7 @@ class AzureImageClient:
             )
 
         os.makedirs(OUTPUTS_DIR, exist_ok=True)
-        unique_id = uuid.uuid4().hex[:12]
+        unique_id = job_id or uuid.uuid4().hex[:12]
         output_filename = f"instaxoom_azure_{unique_id}.png"
         output_filepath = os.path.join(OUTPUTS_DIR, output_filename)
 
@@ -241,68 +325,167 @@ class AzureImageClient:
         deployment_name = settings.AZURE_AI_DEPLOYMENT
         size = "1024x1024"
 
-        # Serialize requests via queue lock
-        async with self._queue_lock:
-            # Enforce 30-second spacing between request dispatches
-            now = time.time()
-            elapsed = now - self._last_dispatch_time
-            if self._last_dispatch_time > 0 and elapsed < self.MIN_INTERVAL_SECONDS:
-                wait_time = self.MIN_INTERVAL_SECONDS - elapsed
-                print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
-                await asyncio.sleep(wait_time)
+        waiting_item = {"job_id": unique_id, "on_status": on_status}
+        self._waiting_jobs.append(waiting_item)
+        position = len(self._waiting_jobs)
 
-            last_error: Optional[Exception] = None
-
-            # Retry loop: if failure or throttled, wait 30 seconds and retry
-            for attempt in range(1, max_retries + 1):
-                self._last_dispatch_time = time.time()
+        # Notify initial queue position if waiting behind another active or queued job
+        if self._active_job_id is not None or position > 1:
+            est_wait = self.calculate_estimated_wait(position)
+            if on_status:
                 try:
-                    print(f"[Azure Queue] Dispatching image request to Azure (attempt {attempt}/{max_retries})...")
-                    success = await self._execute_single_attempt(
-                        base_url=base_url,
-                        deployment_name=deployment_name,
-                        photo_bytes=photo_bytes,
-                        prompt=prompt,
-                        size=size,
-                        output_filepath=output_filepath,
-                    )
-                    if success:
-                        print(f"[Azure Queue] Generation succeeded on attempt {attempt}!")
-                        return output_filename
+                    res = on_status({
+                        "type": "queued",
+                        "job_id": unique_id,
+                        "position": position,
+                        "estimated_seconds": est_wait,
+                        "message": f"In queue (#{position} in line) — Est. wait: ~{est_wait}s",
+                    })
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as cb_err:
+                    print(f"[Azure Queue] on_status error: {cb_err}")
 
-                except HTTPException as http_exc:
-                    last_error = http_exc
-                    # Never retry non-transient 400 moderation blocks (prompt text needs to be changed by user)
-                    if http_exc.status_code == 400 and "content safety filter" in str(http_exc.detail):
+        # Serialize requests via queue lock
+        try:
+            async with self._queue_lock:
+                # Remove self from waiting list as we have acquired execution slot
+                if waiting_item in self._waiting_jobs:
+                    self._waiting_jobs.remove(waiting_item)
+
+                # Broadcast updated queue positions to remaining waiting requests
+                await self._broadcast_queue_updates()
+
+                # Enforce 30-second spacing between request dispatches
+                now = time.time()
+                elapsed = now - self._last_dispatch_time
+                if self._last_dispatch_time > 0 and elapsed < self.MIN_INTERVAL_SECONDS:
+                    wait_time = self.MIN_INTERVAL_SECONDS - elapsed
+                    print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
+                    if on_status:
+                        try:
+                            res = on_status({
+                                "type": "spacing_wait",
+                                "job_id": unique_id,
+                                "position": 0,
+                                "wait_seconds": int(wait_time),
+                                "estimated_seconds": int(wait_time + self.ESTIMATED_GEN_DURATION),
+                                "message": f"Spacing requests for rate limit — Starting in {int(wait_time)}s...",
+                            })
+                            if asyncio.iscoroutine(res):
+                                await res
+                        except Exception as cb_err:
+                            print(f"[Azure Queue] on_status error: {cb_err}")
+
+                    await asyncio.sleep(wait_time)
+
+                self._active_job_id = unique_id
+                self._active_job_start = time.time()
+                last_error: Optional[Exception] = None
+
+                # Retry loop: if failure or throttled, wait 30 seconds and retry
+                for attempt in range(1, max_retries + 1):
+                    self._last_dispatch_time = time.time()
+                    try:
+                        print(f"[Azure Queue] Dispatching image request to Azure (attempt {attempt}/{max_retries})...")
+                        if on_status:
+                            try:
+                                res = on_status({
+                                    "type": "processing",
+                                    "job_id": unique_id,
+                                    "attempt": attempt,
+                                    "position": 0,
+                                    "estimated_seconds": int(self.ESTIMATED_GEN_DURATION),
+                                    "message": f"Generating portrait with Azure AI... (~15-20s left)",
+                                })
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            except Exception as cb_err:
+                                print(f"[Azure Queue] on_status error: {cb_err}")
+
+                        success = await self._execute_single_attempt(
+                            base_url=base_url,
+                            deployment_name=deployment_name,
+                            photo_bytes=photo_bytes,
+                            prompt=prompt,
+                            size=size,
+                            output_filepath=output_filepath,
+                        )
+                        if success:
+                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}!")
+                            return output_filename
+
+                    except HTTPException as http_exc:
+                        last_error = http_exc
+                        # Never retry non-transient 400 moderation blocks
+                        if http_exc.status_code == 400 and "content safety filter" in str(http_exc.detail):
+                            raise
+
+                        if attempt < max_retries:
+                            print(
+                                f"[Azure Queue] Model throttled or failed (HTTP {http_exc.status_code}). "
+                                f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
+                            )
+                            if on_status:
+                                try:
+                                    res = on_status({
+                                        "type": "retrying",
+                                        "job_id": unique_id,
+                                        "attempt": attempt + 1,
+                                        "max_retries": max_retries,
+                                        "wait_seconds": 30,
+                                        "message": f"Azure rate limit reached — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
+                                    })
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception as cb_err:
+                                    print(f"[Azure Queue] on_status error: {cb_err}")
+
+                            await asyncio.sleep(30.0)
+                            continue
                         raise
 
-                    if attempt < max_retries:
-                        print(
-                            f"[Azure Queue] Model throttled or failed (HTTP {http_exc.status_code}). "
-                            f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
+                    except Exception as exc:
+                        last_error = exc
+                        if attempt < max_retries:
+                            print(
+                                f"[Azure Queue] Request encountered error ({exc}). "
+                                f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
+                            )
+                            if on_status:
+                                try:
+                                    res = on_status({
+                                        "type": "retrying",
+                                        "job_id": unique_id,
+                                        "attempt": attempt + 1,
+                                        "max_retries": max_retries,
+                                        "wait_seconds": 30,
+                                        "message": f"Encountered temporary error — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
+                                    })
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception as cb_err:
+                                    print(f"[Azure Queue] on_status error: {cb_err}")
+
+                            await asyncio.sleep(30.0)
+                            continue
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
                         )
-                        await asyncio.sleep(30.0)
-                        continue
-                    raise
 
-                except Exception as exc:
-                    last_error = exc
-                    if attempt < max_retries:
-                        print(
-                            f"[Azure Queue] Request encountered error ({exc}). "
-                            f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
-                        )
-                        await asyncio.sleep(30.0)
-                        continue
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
-                    )
+                if last_error:
+                    raise last_error
 
-            if last_error:
-                raise last_error
+                raise HTTPException(status_code=500, detail="Azure generation ended without result.")
 
-            raise HTTPException(status_code=500, detail="Azure generation ended without result.")
+        finally:
+            if waiting_item in self._waiting_jobs:
+                self._waiting_jobs.remove(waiting_item)
+            if self._active_job_id == unique_id:
+                self._active_job_id = None
+                self._active_job_start = 0.0
+            await self._broadcast_queue_updates()
 
 
 azure_image_client = AzureImageClient()

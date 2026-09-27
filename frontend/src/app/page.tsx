@@ -87,11 +87,25 @@ const SUGGESTED_MODIFIERS = [
   "wind in hair",
 ];
 
+interface QueueStatusInfo {
+  active_jobs: number;
+  waiting_jobs: number;
+  total_in_queue: number;
+  estimated_wait_seconds: number;
+  status_text: string;
+}
+
 export default function Home() {
   const envEngine = (process.env.NEXT_PUBLIC_ENGINE || "flux").toLowerCase();
   const [activeEngine, setActiveEngine] = useState<string>(envEngine);
   const isAzure = activeEngine === "azure";
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+
+  // Live queue & estimated wait time states
+  const [queueStatus, setQueueStatus] = useState<QueueStatusInfo | null>(null);
+  const [liveQueuePosition, setLiveQueuePosition] = useState<number | null>(null);
+  const [liveEstSeconds, setLiveEstSeconds] = useState<number>(0);
+  const [liveStatusMessage, setLiveStatusMessage] = useState<string>("");
 
   const [themes, setThemes] = useState<Theme[]>(DEFAULT_THEMES);
   const [selectedTheme, setSelectedTheme] = useState<Theme>(DEFAULT_THEMES[0]);
@@ -134,7 +148,35 @@ export default function Home() {
       .catch((err) => console.log("Using default themes:", err));
   }, []);
 
-  // Cooldown countdown effect for Azure 2 RPM limit
+  // Poll live queue status when idle in Azure mode
+  useEffect(() => {
+    if (!isAzure || isGenerating) return;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const fetchQueue = () => {
+      fetch(`${apiUrl}/api/trends/queue-status`)
+        .then((res) => res.json())
+        .then((data: QueueStatusInfo) => {
+          if (data && typeof data.total_in_queue === "number") {
+            setQueueStatus(data);
+          }
+        })
+        .catch((err) => console.log("Queue status poll error:", err));
+    };
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 5000);
+    return () => clearInterval(interval);
+  }, [isAzure, isGenerating]);
+
+  // Live countdown timer during active generation / queuing
+  useEffect(() => {
+    if (!isGenerating || liveEstSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setLiveEstSeconds((prev) => (prev > 1 ? prev - 1 : 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isGenerating, liveEstSeconds]);
+
+  // Cooldown countdown effect
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
     const timer = setInterval(() => {
@@ -245,23 +287,27 @@ export default function Home() {
     setGenerationProgress(10);
     setGeneratedImage(null);
     setErrorMessage(null);
+    setLiveQueuePosition(null);
+    setLiveEstSeconds(18);
+    setLiveStatusMessage(isAzure ? "Connecting to Azure AI generator..." : "Starting local FLUX generation...");
 
     // Dynamic progression while inference processes
     const interval = setInterval(() => {
       setGenerationProgress((prev) => {
         if (prev >= 92) return 92;
-        return prev + 6;
+        return prev + 4;
       });
     }, 1000);
 
     try {
       const formData = new FormData();
-      // Pass cropped photo(s) and engine selection
+      // Pass photo(s) and engine selection
       uploadedFiles.forEach((file) => formData.append("photos", file));
       formData.append("aspect_ratio", "4:5");
       formData.append("theme_id", selectedTheme.id);
       formData.append("prompt", customPrompt);
       formData.append("engine", isAzure ? "azure" : "flux");
+      formData.append("stream", "true");
       if (detectedGender) {
         formData.append("gender", detectedGender);
       }
@@ -272,21 +318,88 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await res.json();
-      clearInterval(interval);
+      const contentType = res.headers.get("content-type") || "";
 
-      if (res.ok && data.image_url) {
-        setGenerationProgress(100);
-        const fullUrl = data.image_url.startsWith("http")
-          ? data.image_url
-          : `${apiUrl}${data.image_url}`;
-        setGeneratedImage(fullUrl);
+      // Stream processing for live queue updates (Azure SSE)
+      if (contentType.includes("text/event-stream") && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+
+          for (const block of blocks) {
+            const lines = block.split("\n");
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith("data: ")) {
+                try {
+                  const event = JSON.parse(trimmed.slice(6));
+                  if (event.type === "queued" || event.type === "queue_update") {
+                    setLiveQueuePosition(event.position);
+                    if (typeof event.estimated_seconds === "number") {
+                      setLiveEstSeconds(event.estimated_seconds);
+                    }
+                    if (event.message) setLiveStatusMessage(event.message);
+                  } else if (event.type === "spacing_wait") {
+                    setLiveQueuePosition(0);
+                    if (typeof event.wait_seconds === "number") {
+                      setLiveEstSeconds(event.wait_seconds + 18);
+                    }
+                    if (event.message) setLiveStatusMessage(event.message);
+                  } else if (event.type === "processing") {
+                    setLiveQueuePosition(0);
+                    if (typeof event.estimated_seconds === "number") {
+                      setLiveEstSeconds(event.estimated_seconds);
+                    }
+                    if (event.message) setLiveStatusMessage(event.message);
+                  } else if (event.type === "retrying") {
+                    if (typeof event.wait_seconds === "number") {
+                      setLiveEstSeconds(event.wait_seconds);
+                    }
+                    if (event.message) setLiveStatusMessage(event.message);
+                  } else if (event.type === "completed" && event.image_url) {
+                    clearInterval(interval);
+                    setGenerationProgress(100);
+                    const fullUrl = event.image_url.startsWith("http")
+                      ? event.image_url
+                      : `${apiUrl}${event.image_url}`;
+                    setGeneratedImage(fullUrl);
+                  } else if (event.type === "error") {
+                    clearInterval(interval);
+                    setErrorMessage(event.detail || "Image generation failed.");
+                  }
+                } catch (parseErr) {
+                  console.warn("SSE parse error:", parseErr);
+                }
+              }
+            }
+          }
+        }
       } else {
-        if (res.status === 429) {
-          if (isAzure) setCooldownSeconds(15);
-          setErrorMessage(data.detail || "Server queue is currently processing. Please wait a moment.");
+        // Fallback standard JSON response
+        const data = await res.json();
+        clearInterval(interval);
+
+        if (res.ok && data.image_url) {
+          setGenerationProgress(100);
+          const fullUrl = data.image_url.startsWith("http")
+            ? data.image_url
+            : `${apiUrl}${data.image_url}`;
+          setGeneratedImage(fullUrl);
         } else {
-          setErrorMessage(data.detail || "Image generation failed. Please try again.");
+          if (res.status === 429) {
+            if (isAzure) setCooldownSeconds(15);
+            setErrorMessage(data.detail || "Server queue is currently processing. Please wait a moment.");
+          } else {
+            setErrorMessage(data.detail || "Image generation failed. Please try again.");
+          }
         }
       }
     } catch (err: any) {
@@ -460,9 +573,9 @@ export default function Home() {
         <div className="flex items-center gap-3">
           {isAzure ? (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-950/70 border border-sky-800/70 text-xs font-medium text-sky-200 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+              <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400" : "bg-sky-400"} animate-pulse`} />
               <Cloud className="w-3.5 h-3.5 text-sky-400" />
-              <span>Azure Cloud &bull; GPT-Image-2.5 Flare</span>
+              <span>Azure Cloud &bull; {queueStatus ? queueStatus.status_text : "GPT-Image-2.5 Flare"}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800/70 text-xs font-medium text-emerald-200 shadow-sm">
@@ -727,7 +840,7 @@ export default function Home() {
           </div>
 
           {/* Step 5: Generate CTA */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <button
               type="button"
               disabled={uploadedFiles.length === 0 || isGenerating || cooldownSeconds > 0}
@@ -743,10 +856,26 @@ export default function Home() {
               }`}
             >
               {isGenerating ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  <span>Generating {selectedTheme.title} ({generationProgress}%)...</span>
-                </>
+                <div className="flex flex-col items-center gap-0.5 py-0.5">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin text-white" />
+                    <span>
+                      {liveQueuePosition !== null && liveQueuePosition > 0
+                        ? `Waiting in Queue (#${liveQueuePosition} in line)`
+                        : `Generating ${selectedTheme.title}...`}
+                    </span>
+                  </div>
+                  {isAzure && (
+                    <div className="flex items-center gap-1.5 text-xs font-normal text-sky-200">
+                      <Clock className="w-3.5 h-3.5 text-sky-300" />
+                      <span>
+                        {liveQueuePosition !== null && liveQueuePosition > 0
+                          ? `Est. wait: ~${liveEstSeconds}s (${liveQueuePosition} ahead)`
+                          : `Est. time remaining: ~${liveEstSeconds}s`}
+                      </span>
+                    </div>
+                  )}
+                </div>
               ) : cooldownSeconds > 0 ? (
                 <>
                   <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
@@ -760,10 +889,49 @@ export default function Home() {
               )}
             </button>
 
-            {isAzure && (
-              <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400 pt-1">
-                <Clock className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                <span>Azure Cloud: Sequential queue active (30s spacing with auto-retry)</span>
+            {/* Live Queue Progress Card during generation */}
+            {isGenerating && isAzure && (
+              <div className="p-4 rounded-2xl bg-neutral-950/90 border border-sky-500/30 shadow-xl space-y-2.5 backdrop-blur-md">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 font-semibold">
+                    {liveQueuePosition !== null && liveQueuePosition > 0 ? (
+                      <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                        Queue Position #{liveQueuePosition}
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1 font-mono">
+                        <Sparkles className="w-3 h-3 text-sky-400 animate-pulse" />
+                        Active Generation
+                      </span>
+                    )}
+                    <span className="text-neutral-300">{liveStatusMessage || "Processing image..."}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-sky-300 font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-sky-950/80 border border-sky-800/60">
+                    <Clock className="w-3.5 h-3.5 text-sky-400" />
+                    <span>~{liveEstSeconds}s</span>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
+                  <div
+                    className="bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 h-full transition-all duration-1000 rounded-full"
+                    style={{
+                      width: liveQueuePosition !== null && liveQueuePosition > 0
+                        ? `${Math.max(10, Math.min(85, 100 - (liveEstSeconds * 1.5)))}%`
+                        : `${Math.max(15, Math.min(95, 100 - (liveEstSeconds * 4.5)))}%`
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isAzure && !isGenerating && (
+              <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 pt-1">
+                <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
+                <span>
+                  Live Queue: <strong className="text-neutral-200">{queueStatus ? queueStatus.status_text : "Ready (0 waiting)"}</strong> (Auto-sequenced 30s queue)
+                </span>
               </div>
             )}
           </div>
