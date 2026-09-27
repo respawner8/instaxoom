@@ -341,7 +341,7 @@ async def get_today_trend(request: Request, x_client_token: Optional[str] = Head
         "engine": settings.ENGINE,
         "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
-        "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM if settings.ENGINE == "azure" else None,
+        "queue_enabled": True if settings.ENGINE == "azure" else False,
         "quota": {
             "remaining_generations": 999,
             "reset_in_seconds": 86400,
@@ -428,10 +428,7 @@ async def generate_trend_image(
             "engine_used": "azure_gpt_image_2.5_flare",
             "photos_received": 1,
             "image_url": f"/api/trends/outputs/{output_filename}",
-            "quota": {
-                "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM,
-                "cooldown_seconds": 30,
-            },
+            "queue_active": True,
             "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
         }
 

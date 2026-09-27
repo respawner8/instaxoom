@@ -91,7 +91,7 @@ NEXT_PUBLIC_API_URL=https://instaxoom-backend.<region>.azurecontainerapps.io
 - **UI Behavior:**
   - Header displays: `☁️ Azure Cloud • GPT-Image-2.5 Flare`
   - Upload allows: `1 photo max`
-  - Cooldown: `30 seconds between generations (2 RPM)`
+  - Queue: `Sequential 30s queue with automatic retry on throttle`
 
 ### For Local GPU Deployment (FLUX.1 + PuLID):
 ```env

@@ -281,14 +281,10 @@ export default function Home() {
           ? data.image_url
           : `${apiUrl}${data.image_url}`;
         setGeneratedImage(fullUrl);
-        // Start 30s cooldown for Azure engine to respect 2 RPM limit
-        if (isAzure) {
-          setCooldownSeconds(30);
-        }
       } else {
         if (res.status === 429) {
-          if (isAzure) setCooldownSeconds(30);
-          setErrorMessage(data.detail || "Rate limit reached (2 images/min). Please wait 30 seconds.");
+          if (isAzure) setCooldownSeconds(15);
+          setErrorMessage(data.detail || "Server queue is currently processing. Please wait a moment.");
         } else {
           setErrorMessage(data.detail || "Image generation failed. Please try again.");
         }
@@ -754,7 +750,7 @@ export default function Home() {
               ) : cooldownSeconds > 0 ? (
                 <>
                   <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
-                  <span>Rate Limit Cooldown ({cooldownSeconds}s) &bull; 2/min limit</span>
+                  <span>Queue Cooldown ({cooldownSeconds}s)</span>
                 </>
               ) : (
                 <>
@@ -767,7 +763,7 @@ export default function Home() {
             {isAzure && (
               <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400 pt-1">
                 <Clock className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                <span>Azure Cloud rate limit: 2 images/min (30s cooldown between requests)</span>
+                <span>Azure Cloud: Sequential queue active (30s spacing with auto-retry)</span>
               </div>
             )}
           </div>
