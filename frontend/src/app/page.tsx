@@ -18,7 +18,10 @@ import {
   X,
   UserCheck,
   Crop,
-  Check
+  Check,
+  Cloud,
+  Clock,
+  Zap
 } from "lucide-react";
 import { autoCropAndDetectFace, ProcessedPhotoResult } from "@/lib/faceCropper";
 
@@ -85,6 +88,11 @@ const SUGGESTED_MODIFIERS = [
 ];
 
 export default function Home() {
+  const envEngine = (process.env.NEXT_PUBLIC_ENGINE || "flux").toLowerCase();
+  const [activeEngine, setActiveEngine] = useState<string>(envEngine);
+  const isAzure = activeEngine === "azure";
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+
   const [themes, setThemes] = useState<Theme[]>(DEFAULT_THEMES);
   const [selectedTheme, setSelectedTheme] = useState<Theme>(DEFAULT_THEMES[0]);
   const [customPrompt, setCustomPrompt] = useState<string>(DEFAULT_THEMES[0].prompt_template);
@@ -111,6 +119,9 @@ export default function Home() {
     fetch(`${apiUrl}/api/trends/today`)
       .then((res) => res.json())
       .then((data) => {
+        if (data.engine && !process.env.NEXT_PUBLIC_ENGINE) {
+          setActiveEngine(data.engine.toLowerCase());
+        }
         if (data.themes && Array.isArray(data.themes) && data.themes.length > 0) {
           setThemes(data.themes);
           if (!isPromptEdited) {
@@ -122,6 +133,15 @@ export default function Home() {
       })
       .catch((err) => console.log("Using default themes:", err));
   }, []);
+
+  // Cooldown countdown effect for Azure 2 RPM limit
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   const handleThemeSelect = (theme: Theme) => {
     setSelectedTheme(theme);
@@ -147,17 +167,26 @@ export default function Home() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    const rawFiles = Array.from(e.target.files).slice(0, 5);
+    const maxFiles = isAzure ? 1 : 5;
+    const rawFiles = Array.from(e.target.files).slice(0, maxFiles);
     if (rawFiles.length === 0) return;
 
     setIsCropping(true);
-    setCroppingStatus("Detecting faces & auto-cropping to 4:5 headshots...");
+    setCroppingStatus(
+      isAzure
+        ? "Detecting face & auto-cropping to 4:5 headshot..."
+        : "Detecting faces & auto-cropping to 4:5 headshots..."
+    );
     setErrorMessage(null);
 
     try {
       const processedResults: ProcessedPhotoResult[] = [];
       for (let i = 0; i < rawFiles.length; i++) {
-        setCroppingStatus(`Processing selfie ${i + 1} of ${rawFiles.length}...`);
+        setCroppingStatus(
+          isAzure
+            ? "Processing face portrait..."
+            : `Processing selfie ${i + 1} of ${rawFiles.length}...`
+        );
         const res = await autoCropAndDetectFace(rawFiles[i]);
         processedResults.push(res);
       }
@@ -208,13 +237,13 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
-    if (uploadedFiles.length === 0) return;
+    if (uploadedFiles.length === 0 || cooldownSeconds > 0) return;
     setIsGenerating(true);
     setGenerationProgress(10);
     setGeneratedImage(null);
     setErrorMessage(null);
 
-    // Dynamic progression while ComfyUI processes diffusion steps
+    // Dynamic progression while inference processes
     const interval = setInterval(() => {
       setGenerationProgress((prev) => {
         if (prev >= 92) return 92;
@@ -224,11 +253,12 @@ export default function Home() {
 
     try {
       const formData = new FormData();
-      // Pass ALL uploaded and cropped photos to ComfyUI for multi-face pooling
+      // Pass cropped photo(s) and engine selection
       uploadedFiles.forEach((file) => formData.append("photos", file));
       formData.append("aspect_ratio", "4:5");
       formData.append("theme_id", selectedTheme.id);
       formData.append("prompt", customPrompt);
+      formData.append("engine", isAzure ? "azure" : "flux");
       if (detectedGender) {
         formData.append("gender", detectedGender);
       }
@@ -248,8 +278,17 @@ export default function Home() {
           ? data.image_url
           : `${apiUrl}${data.image_url}`;
         setGeneratedImage(fullUrl);
+        // Start 30s cooldown for Azure engine to respect 2 RPM limit
+        if (isAzure) {
+          setCooldownSeconds(30);
+        }
       } else {
-        setErrorMessage(data.detail || "Image generation failed. Please try again.");
+        if (res.status === 429) {
+          if (isAzure) setCooldownSeconds(30);
+          setErrorMessage(data.detail || "Rate limit reached (2 images/min). Please wait 30 seconds.");
+        } else {
+          setErrorMessage(data.detail || "Image generation failed. Please try again.");
+        }
       }
     } catch (err: any) {
       clearInterval(interval);
@@ -420,19 +459,35 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-medium text-neutral-300">
-            <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>Dev & Multi-Theme Active</span>
-          </div>
+          {isAzure ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-950/70 border border-sky-800/70 text-xs font-medium text-sky-200 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+              <Cloud className="w-3.5 h-3.5 text-sky-400" />
+              <span>Azure Cloud &bull; GPT-Image-2.5 Flare</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-800/70 text-xs font-medium text-emerald-200 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Local GPU &bull; FLUX.1 + PuLID</span>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Hero / Header */}
       <div className="max-w-4xl mx-auto w-full px-4 pt-10 pb-16 flex-1 flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
-          <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-          <span>AI PORTRAIT GENERATOR &bull; FLUX.1 + PuLID</span>
-        </div>
+        {isAzure ? (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-sky-500/10 via-indigo-500/10 to-purple-500/10 border border-sky-500/20 text-sky-300 text-xs font-semibold mb-6">
+            <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <span>AI PORTRAIT GENERATOR &bull; AZURE AI FOUNDRY (GPT-IMAGE 2.5 FLARE)</span>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
+            <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+            <span>AI PORTRAIT GENERATOR &bull; FLUX.1 + PuLID</span>
+          </div>
+        )}
 
         <h1 className="text-4xl md:text-5xl font-black text-center tracking-tight mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
           {selectedTheme.title}
@@ -448,28 +503,39 @@ export default function Home() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
-                <span>1. Upload Face Photos</span>
-                <span className="text-xs font-normal text-neutral-500">(1 to 5 photos)</span>
+                <span>{isAzure ? "1. Upload Face Portrait" : "1. Upload Face Photos"}</span>
+                <span className="text-xs font-normal text-neutral-500">
+                  {isAzure ? "(1 photo max • Cloud Mode)" : "(1 to 5 photos)"}
+                </span>
               </label>
-              <span className="text-xs text-rose-400 font-medium flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5" />
-                PuLID Face Likeness
-              </span>
+              {isAzure ? (
+                <span className="text-xs text-sky-400 font-medium flex items-center gap-1">
+                  <Cloud className="w-3.5 h-3.5" />
+                  Azure Flare Likeness
+                </span>
+              ) : (
+                <span className="text-xs text-rose-400 font-medium flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5" />
+                  PuLID Face Likeness
+                </span>
+              )}
             </div>
 
             <div className="border-2 border-dashed border-neutral-800 hover:border-neutral-700 transition rounded-2xl p-6 text-center bg-neutral-950/40 relative cursor-pointer">
               <input
                 type="file"
-                multiple
+                multiple={!isAzure}
                 accept="image/*"
                 onChange={handleFileChange}
-                disabled={isCropping || isGenerating}
+                disabled={isCropping || isGenerating || cooldownSeconds > 0}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
               />
               <div className="flex flex-col items-center gap-2 pointer-events-none">
                 <div className="w-12 h-12 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
                   {isCropping ? (
                     <RefreshCw className="w-5 h-5 text-rose-400 animate-spin" />
+                  ) : isAzure ? (
+                    <Cloud className="w-5 h-5 text-sky-400" />
                   ) : (
                     <Upload className="w-5 h-5 text-neutral-300" />
                   )}
@@ -478,11 +544,17 @@ export default function Home() {
                   {isCropping
                     ? croppingStatus
                     : uploadedFiles.length > 0
-                    ? `${uploadedFiles.length} photo(s) selected (4:5 Headshots Auto-Framed)`
+                    ? isAzure
+                      ? "1/1 Portrait Selected (Click to change)"
+                      : `${uploadedFiles.length} photo(s) selected (4:5 Headshots Auto-Framed)`
+                    : isAzure
+                    ? "Tap to select 1 portrait selfie"
                     : "Tap to select or drop photos here"}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  Upload 1 to 5 clear selfies &bull; Faces are automatically detected, cropped to 4:5 headshots, and pooled
+                  {isAzure
+                    ? "Upload 1 clear portrait photo • Auto-detected and cropped to 4:5 headshot for Azure Foundry"
+                    : "Upload 1 to 5 clear selfies • Faces are automatically detected, cropped to 4:5 headshots, and pooled"}
                 </p>
               </div>
             </div>
@@ -656,28 +728,46 @@ export default function Home() {
           </div>
 
           {/* Step 5: Generate CTA */}
-          <button
-            type="button"
-            disabled={uploadedFiles.length === 0 || isGenerating}
-            onClick={handleGenerate}
-            className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 text-base transition-all shadow-xl ${
-              uploadedFiles.length === 0 || isGenerating
-                ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                : "bg-gradient-to-r from-rose-500 via-purple-600 to-amber-500 text-white hover:opacity-95 shadow-rose-500/25 active:scale-[0.99]"
-            }`}
-          >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Generating {selectedTheme.title} ({generationProgress}%)...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5" />
-                <span>Generate {selectedTheme.title} Portrait</span>
-              </>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={uploadedFiles.length === 0 || isGenerating || cooldownSeconds > 0}
+              onClick={handleGenerate}
+              className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 text-base transition-all shadow-xl ${
+                cooldownSeconds > 0
+                  ? "bg-amber-950/40 border border-amber-800/50 text-amber-300 cursor-not-allowed"
+                  : uploadedFiles.length === 0 || isGenerating
+                  ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                  : isAzure
+                  ? "bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-500 text-white hover:opacity-95 shadow-sky-500/25 active:scale-[0.99]"
+                  : "bg-gradient-to-r from-rose-500 via-purple-600 to-amber-500 text-white hover:opacity-95 shadow-rose-500/25 active:scale-[0.99]"
+              }`}
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>Generating {selectedTheme.title} ({generationProgress}%)...</span>
+                </>
+              ) : cooldownSeconds > 0 ? (
+                <>
+                  <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+                  <span>Rate Limit Cooldown ({cooldownSeconds}s) &bull; 2/min limit</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  <span>Generate {selectedTheme.title} Portrait</span>
+                </>
+              )}
+            </button>
+
+            {isAzure && (
+              <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-400 pt-1">
+                <Clock className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                <span>Azure Cloud rate limit: 2 images/min (30s cooldown between requests)</span>
+              </div>
             )}
-          </button>
+          </div>
 
           {/* Error Notice */}
           {errorMessage && (

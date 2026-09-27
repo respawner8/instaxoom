@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     DEFAULT_STEPS: int = 4
     DEFAULT_GUIDANCE: float = 3.5
 
+    # Engine & Cloud Provider ("flux" or "azure")
+    ENGINE: Literal["flux", "azure"] = "flux"
+
+    # Azure AI Foundry / OpenAI Image Settings
+    AZURE_AI_ENDPOINT: str = "https://imageeastus2-resource.services.ai.azure.com/api/projects/imageeastus2"
+    AZURE_AI_API_KEY: Optional[str] = None
+    AZURE_AI_DEPLOYMENT: str = "gpt-image-2.5-flare"
+    AZURE_AI_API_VERSION: str = "2024-02-01"
+    AZURE_RATE_LIMIT_RPM: int = 2
+
+
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
