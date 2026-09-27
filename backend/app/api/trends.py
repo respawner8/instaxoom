@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from app.services.comfy_client import comfy_client
+from app.services.azure_image_client import azure_image_client
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/trends", tags=["Daily Trends"])
@@ -332,12 +333,15 @@ def build_workflow_prompt(
 @router.get("/today")
 async def get_today_trend(request: Request, x_client_token: Optional[str] = Header(None)):
     """
-    Returns today's active platform trend along with full themes catalogue.
-    Rate limiting is disabled for local development (unlimited generations).
+    Returns today's active platform trend along with full themes catalogue and active engine metadata.
     """
     return {
         "trend": TODAY_TREND,
         "themes": THEMES,
+        "engine": settings.ENGINE,
+        "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
+        "max_photos": 1 if settings.ENGINE == "azure" else 5,
+        "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM if settings.ENGINE == "azure" else None,
         "quota": {
             "remaining_generations": 999,
             "reset_in_seconds": 86400,
@@ -372,14 +376,66 @@ async def generate_trend_image(
     prompt: Optional[str] = Form(None),
     theme_id: Optional[str] = Form("trend-retro-90s-yearbook"),
     gender: Optional[str] = Form(None),
+    engine: Optional[str] = Form(None),
     x_client_token: Optional[str] = Header(None),
 ):
     """
-    Accepts 1 to 5 user photos, executes the ComfyUI inference workflow,
+    Accepts user photo(s), executes the inference workflow via either
+    local FLUX.1 (ComfyUI + PuLID) or cloud Azure AI Foundry (gpt-image-2.5-flare),
     and returns the URL of the generated 4:5 Instagram portrait.
-    Supports real-time edited custom prompts, multi-theme selection,
-    automatic gender conditioning, and multi-photo face pooling.
     """
+    active_engine = (engine or settings.ENGINE).lower()
+
+    # --- Azure AI Foundry Branch ---
+    if active_engine == "azure":
+        if not photos or len(photos) == 0:
+            raise HTTPException(status_code=400, detail="Please upload a photo for the portrait.")
+
+        primary_photo = photos[0]
+        limit = settings.MAX_PHOTO_BYTES
+        if limit and primary_photo.size is not None and primary_photo.size > limit:
+            raise HTTPException(status_code=413, detail=f"Photo must be at most {limit} bytes.")
+        photo_bytes = await primary_photo.read(limit + 1 if limit else -1)
+        if limit and len(photo_bytes) > limit:
+            raise HTTPException(status_code=413, detail=f"Photo must be at most {limit} bytes.")
+
+        selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+        if prompt and prompt.strip():
+            base_prompt = prompt.strip()
+        else:
+            base_prompt = selected_theme["prompt_template"]
+
+        if custom_caption and custom_caption.strip() and custom_caption.strip() not in base_prompt:
+            base_prompt = f"{base_prompt}, {custom_caption.strip()}"
+
+        final_prompt = apply_gender_to_prompt(base_prompt, gender)
+
+        job_id = str(uuid.uuid4())
+        output_filename = await azure_image_client.generate_portrait(
+            photo_bytes=photo_bytes,
+            prompt=final_prompt,
+            aspect_ratio=aspect_ratio,
+        )
+
+        return {
+            "status": "completed",
+            "job_id": job_id,
+            "theme_id": selected_theme["id"],
+            "theme_title": selected_theme["title"],
+            "prompt_used": final_prompt,
+            "gender": gender,
+            "aspect_ratio": "4:5",
+            "engine_used": "azure_gpt_image_2.5_flare",
+            "photos_received": 1,
+            "image_url": f"/api/trends/outputs/{output_filename}",
+            "quota": {
+                "rate_limit_rpm": settings.AZURE_RATE_LIMIT_RPM,
+                "cooldown_seconds": 30,
+            },
+            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+        }
+
+    # --- Local FLUX.1 + ComfyUI Branch ---
     # 1. Validate photos
     if not (1 <= len(photos) <= 5):
         raise HTTPException(
