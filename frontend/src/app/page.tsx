@@ -42,7 +42,7 @@ const DEFAULT_THEMES: Theme[] = [
     category: "Vintage",
     tagline: "Authentic 1994 vintage yearbook portrait with film grain, soft flash, and blue studio backdrop.",
     hashtags: ["#90sYearbook", "#VintageAesthetic", "#instaXoom"],
-    prompt_template: "1990s high school yearbook photo, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling high school student, authentic 90s hair and collar shirt",
+    prompt_template: "1990s retro vintage yearbook portrait, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling adult subject, authentic 90s hair and collar shirt",
   },
   {
     id: "trend-cyberpunk-neon",

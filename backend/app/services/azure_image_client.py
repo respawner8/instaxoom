@@ -179,6 +179,12 @@ class AzureImageClient:
                         headers={"Retry-After": retry_after},
                     )
 
+                if "moderation_blocked" in response.text:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="The generated image was flagged by Azure's content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
+                    )
+
                 raise HTTPException(
                     status_code=response.status_code,
                     detail=f"Azure AI generation failed ({response.status_code}): {response.text}",
