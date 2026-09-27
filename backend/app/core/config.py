@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     ENGINE: Literal["flux", "azure"] = "flux"
 
     # Azure AI Foundry / OpenAI Image Settings
-    AZURE_AI_ENDPOINT: str = "https://imageeastus2-resource.services.ai.azure.com/api/projects/imageeastus2"
+    AZURE_AI_ENDPOINT: str = "https://imageeastus2-resource.services.ai.azure.com/openai/v1"
     AZURE_AI_API_KEY: Optional[str] = None
     AZURE_AI_DEPLOYMENT: str = "gpt-image-2.5-flare"
     AZURE_AI_API_VERSION: str = "2024-02-01"
