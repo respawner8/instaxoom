@@ -2,7 +2,7 @@ import base64
 import os
 import time
 import uuid
-from typing import Optional, List, Tuple
+from typing import List, Optional
 from urllib.parse import urlparse
 import aiofiles
 import httpx
@@ -15,9 +15,9 @@ OUTPUTS_DIR = os.path.join(os.getcwd(), "outputs")
 
 class AzureImageClient:
     """
-    Client for Microsoft Azure AI Foundry / Azure OpenAI image models
-    (such as gpt-image-2.5-flare).
-    Enforces a strict 2 Requests-Per-Minute (RPM) rate limiter.
+    Client for Microsoft Azure AI Foundry gpt-image-2.5-flare model
+    via the OpenAI-compatible `/openai/v1` API.
+    Enforces a 2 Requests-Per-Minute (RPM) rate limiter.
     """
 
     def __init__(self):
@@ -26,10 +26,10 @@ class AzureImageClient:
     def check_rate_limit(self) -> None:
         """
         Enforces maximum RPM (default 2 images per 60 seconds).
-        Raises HTTP 429 with Retry-After header if limit exceeded.
+        Raises HTTP 429 with Retry-After header if limit is exceeded.
         """
         now = time.time()
-        # Prune timestamps older than 60 seconds
+        # Keep timestamps from the last 60 seconds
         self._request_timestamps = [t for t in self._request_timestamps if now - t < 60.0]
 
         if len(self._request_timestamps) >= settings.AZURE_RATE_LIMIT_RPM:
@@ -37,51 +37,29 @@ class AzureImageClient:
             wait_seconds = max(1, int(60.0 - (now - oldest)) + 1)
             raise HTTPException(
                 status_code=429,
-                detail=f"Azure rate limit exceeded (max {settings.AZURE_RATE_LIMIT_RPM} images per minute). Please wait {wait_seconds} seconds before trying again.",
+                detail=f"Azure rate limit reached (max {settings.AZURE_RATE_LIMIT_RPM} images per minute). Please wait {wait_seconds} seconds before trying again.",
                 headers={"Retry-After": str(wait_seconds)},
             )
 
     def record_request(self) -> None:
-        """Records a successful or in-flight request timestamp for rate limiting."""
+        """Records a successful request timestamp for rate limiting."""
         self._request_timestamps.append(time.time())
 
-    def _get_candidate_endpoints(self) -> List[Tuple[str, str]]:
+    def _normalize_base_url(self, raw_endpoint: str) -> str:
         """
-        Derives prioritized endpoint URLs from settings.AZURE_AI_ENDPOINT.
-        Supports Azure AI Foundry project URLs, models endpoints, and Azure OpenAI paths.
-        Returns a list of tuples: (endpoint_url, type: 'edits' | 'generations')
+        Ensures the endpoint is in the format expected by Azure AI Foundry OpenAI API:
+        e.g. 'https://imageeastus2-resource.services.ai.azure.com/openai/v1'
         """
-        endpoint = settings.AZURE_AI_ENDPOINT.rstrip("/")
-        deployment = settings.AZURE_AI_DEPLOYMENT
-        api_version = settings.AZURE_AI_API_VERSION
+        clean = raw_endpoint.strip().rstrip("/")
+        if clean.endswith("/openai/v1"):
+            return clean
 
-        parsed = urlparse(endpoint)
-        hostname = parsed.hostname or ""
-        # e.g. "imageeastus2-resource" from "imageeastus2-resource.services.ai.azure.com"
-        resource_name = hostname.split(".")[0]
+        parsed = urlparse(clean)
+        scheme = parsed.scheme or "https"
+        host = parsed.netloc or parsed.path.split("/")[0]
 
-        candidates = []
-
-        # 1. Direct project / models endpoints
-        candidates.append((f"{endpoint}/images/edits", "edits"))
-        candidates.append((f"{endpoint}/models/images/edits", "edits"))
-        candidates.append((f"https://{resource_name}.services.ai.azure.com/models/images/edits", "edits"))
-
-        # 2. Azure OpenAI standard deployments endpoint
-        candidates.append((
-            f"https://{resource_name}.openai.azure.com/openai/deployments/{deployment}/images/edits?api-version={api_version}",
-            "edits",
-        ))
-
-        # 3. Fallbacks to text-to-image generations if edits is unsupported on a specific tier
-        candidates.append((f"{endpoint}/images/generations", "generations"))
-        candidates.append((f"{endpoint}/models/images/generations", "generations"))
-        candidates.append((
-            f"https://{resource_name}.openai.azure.com/openai/deployments/{deployment}/images/generations?api-version={api_version}",
-            "generations",
-        ))
-
-        return candidates
+        # In Azure AI Foundry, OpenAI API endpoints are at https://<resource>.services.ai.azure.com/openai/v1
+        return f"{scheme}://{host}/openai/v1"
 
     async def generate_portrait(
         self,
@@ -90,8 +68,8 @@ class AzureImageClient:
         aspect_ratio: str = "4:5",
     ) -> str:
         """
-        Submits the user headshot and prompt to Azure AI Foundry gpt-image-2.5-flare.
-        Downloads or decodes the generated image and persists it to the outputs directory.
+        Submits the prompt to Azure AI Foundry gpt-image-2.5-flare model.
+        Decodes the b64_json output and persists it to outputs directory.
         Returns the saved output filename.
         """
         if not settings.AZURE_AI_API_KEY:
@@ -108,97 +86,111 @@ class AzureImageClient:
         output_filename = f"instaxoom_azure_{unique_id}.png"
         output_filepath = os.path.join(OUTPUTS_DIR, output_filename)
 
-        headers = {
-            "api-key": settings.AZURE_AI_API_KEY,
-        }
-
-        # Size mapping
+        base_url = self._normalize_base_url(settings.AZURE_AI_ENDPOINT)
+        deployment_name = settings.AZURE_AI_DEPLOYMENT
         size = "1024x1024"
 
-        last_error = "No endpoints attempted"
-        candidate_endpoints = self._get_candidate_endpoints()
+        # Attempt 1: Using official OpenAI async SDK
+        try:
+            from openai import AsyncOpenAI
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            for url, call_type in candidate_endpoints:
-                try:
-                    if call_type == "edits":
-                        # Form-data with image file and prompt
-                        files = {
-                            "image": ("input.png", photo_bytes, "image/png"),
-                        }
-                        data = {
-                            "model": settings.AZURE_AI_DEPLOYMENT,
-                            "prompt": prompt,
-                            "size": size,
-                            "n": "1",
-                        }
-                        response = await client.post(url, headers=headers, files=files, data=data)
-                    else:
-                        # JSON payload for generations
-                        json_body = {
-                            "model": settings.AZURE_AI_DEPLOYMENT,
-                            "prompt": prompt,
-                            "size": size,
-                            "n": 1,
-                        }
-                        response = await client.post(url, headers=headers, json=json_body)
+            client = AsyncOpenAI(
+                base_url=base_url,
+                api_key=settings.AZURE_AI_API_KEY,
+                timeout=90.0,
+            )
 
-                    if response.status_code == 401:
-                        # Try Authorization: Bearer fallback
-                        auth_headers = {"Authorization": f"Bearer {settings.AZURE_AI_API_KEY}"}
-                        if call_type == "edits":
-                            response = await client.post(url, headers=auth_headers, files=files, data=data)
-                        else:
-                            response = await client.post(url, headers=auth_headers, json=json_body)
+            img_resp = await client.images.generate(
+                model=deployment_name,
+                prompt=prompt,
+                n=1,
+                size=size,
+            )
 
-                    if response.status_code in (200, 201):
-                        self.record_request()
-                        result = response.json()
-                        image_data = result.get("data", [])
-                        if not image_data:
-                            raise RuntimeError("Azure AI returned empty image data array.")
+            if not img_resp.data:
+                raise RuntimeError("Azure AI returned empty image data array.")
 
-                        first_item = image_data[0]
-                        if "b64_json" in first_item:
-                            image_bytes = base64.b64decode(first_item["b64_json"])
+            first_item = img_resp.data[0]
+            image_bytes: Optional[bytes] = None
+
+            if hasattr(first_item, "b64_json") and first_item.b64_json:
+                image_bytes = base64.b64decode(first_item.b64_json)
+            elif hasattr(first_item, "url") and first_item.url:
+                async with httpx.AsyncClient(timeout=60.0) as dl_client:
+                    dl_resp = await dl_client.get(first_item.url)
+                    if dl_resp.status_code == 200:
+                        image_bytes = dl_resp.content
+
+            if image_bytes:
+                self.record_request()
+                async with aiofiles.open(output_filepath, "wb") as f:
+                    await f.write(image_bytes)
+                return output_filename
+
+        except HTTPException:
+            raise
+        except Exception as sdk_err:
+            print(f"[AzureImageClient SDK Warning] Falling back to direct REST: {sdk_err}")
+
+        # Attempt 2: Direct REST call via httpx
+        url = f"{base_url}/images/generations"
+        headers = {
+            "api-key": settings.AZURE_AI_API_KEY,
+            "Authorization": f"Bearer {settings.AZURE_AI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": deployment_name,
+            "prompt": prompt,
+            "n": 1,
+            "size": size,
+        }
+
+        async with httpx.AsyncClient(timeout=90.0) as http_client:
+            try:
+                response = await http_client.post(url, headers=headers, json=payload)
+
+                if response.status_code in (200, 201):
+                    self.record_request()
+                    data = response.json().get("data", [])
+                    if not data:
+                        raise RuntimeError(f"Azure response contained no data: {response.text}")
+
+                    first = data[0]
+                    if "b64_json" in first and first["b64_json"]:
+                        img_bytes = base64.b64decode(first["b64_json"])
+                        async with aiofiles.open(output_filepath, "wb") as f:
+                            await f.write(img_bytes)
+                        return output_filename
+
+                    elif "url" in first and first["url"]:
+                        dl_resp = await http_client.get(first["url"])
+                        if dl_resp.status_code == 200:
                             async with aiofiles.open(output_filepath, "wb") as f:
-                                await f.write(image_bytes)
+                                await f.write(dl_resp.content)
                             return output_filename
 
-                        elif "url" in first_item:
-                            img_url = first_item["url"]
-                            # Download remote image so it doesn't expire
-                            dl_resp = await client.get(img_url)
-                            if dl_resp.status_code == 200:
-                                async with aiofiles.open(output_filepath, "wb") as f:
-                                    await f.write(dl_resp.content)
-                                return output_filename
-                            else:
-                                raise RuntimeError(f"Failed to download image from Azure URL: {dl_resp.status_code}")
+                elif response.status_code == 429:
+                    self.record_request()
+                    retry_after = response.headers.get("Retry-After", "30")
+                    raise HTTPException(
+                        status_code=429,
+                        detail="Azure rate limit reached (2 images/min). Please try again shortly.",
+                        headers={"Retry-After": retry_after},
+                    )
 
-                    elif response.status_code == 429:
-                        retry_after = response.headers.get("Retry-After", "30")
-                        self.record_request()
-                        raise HTTPException(
-                            status_code=429,
-                            detail=f"Azure model rate limit reached: {response.text}",
-                            headers={"Retry-After": retry_after},
-                        )
-                    else:
-                        last_error = f"Status {response.status_code} from {url}: {response.text}"
-                        # If 404 or 400 with path error, try next candidate endpoint
-                        continue
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Azure AI generation failed ({response.status_code}): {response.text}",
+                )
 
-                except HTTPException:
-                    raise
-                except Exception as attempt_err:
-                    last_error = str(attempt_err)
-                    continue
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Azure AI generation failed across all attempted endpoints. Last error: {last_error}",
-        )
+            except HTTPException:
+                raise
+            except Exception as req_err:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Azure AI connection error: {str(req_err)}",
+                )
 
 
 azure_image_client = AzureImageClient()

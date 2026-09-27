@@ -11,3 +11,5 @@ aiofiles>=24.1.0
 sqlalchemy>=2.0.30
 asyncpg>=0.29.0
 boto3>=1.34.0
+openai>=1.30.0
+

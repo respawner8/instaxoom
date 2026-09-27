@@ -64,7 +64,7 @@ az containerapp create \
   --max-replicas 2 \
   --env-vars \
     ENGINE="azure" \
-    AZURE_AI_ENDPOINT="https://imageeastus2-resource.services.ai.azure.com/api/projects/imageeastus2" \
+    AZURE_AI_ENDPOINT="https://imageeastus2-resource.services.ai.azure.com/openai/v1" \
     AZURE_AI_API_KEY="<YOUR_AZURE_AI_FOUNDRY_API_KEY>" \
     AZURE_AI_DEPLOYMENT="gpt-image-2.5-flare" \
     AZURE_RATE_LIMIT_RPM="2" \
