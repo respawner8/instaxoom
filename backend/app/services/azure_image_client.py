@@ -191,12 +191,12 @@ class AzureImageClient:
                 if _is_rate_limited(edit_err):
                     raise HTTPException(
                         status_code=429,
-                        detail=f"Azure rate limit reached (429): {str(edit_err)}",
+                        detail=f"Rate limit reached (429): {str(edit_err)}",
                     )
                 if _is_moderation_blocked(edit_err):
                     raise HTTPException(
                         status_code=400,
-                        detail="The generated image was flagged by Azure's content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
+                        detail="The generated image was flagged by the content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
                     )
 
                 print(f"[Azure Queue] images.edit failed ({edit_err}), trying images.generate...")
@@ -211,12 +211,12 @@ class AzureImageClient:
                     if _is_rate_limited(gen_err):
                         raise HTTPException(
                             status_code=429,
-                            detail=f"Azure rate limit reached (429): {str(gen_err)}",
+                            detail=f"Rate limit reached (429): {str(gen_err)}",
                         )
                     if _is_moderation_blocked(gen_err):
                         raise HTTPException(
                             status_code=400,
-                            detail="The generated image was flagged by Azure's content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
+                            detail="The generated image was flagged by the content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
                         )
                     raise gen_err
 
@@ -281,18 +281,18 @@ class AzureImageClient:
             if response.status_code == 429:
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Azure rate limit reached (429): {response.text}",
+                    detail=f"Rate limit reached (429): {response.text}",
                 )
 
             if "moderation_blocked" in response.text or "safety system" in response.text:
                 raise HTTPException(
                     status_code=400,
-                    detail="The generated image was flagged by Azure's content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
+                    detail="The generated image was flagged by the content safety filter (e.g. references to minors or sensitive terms). Please try Cyberpunk or another theme, or adjust the prompt wording.",
                 )
 
             raise HTTPException(
                 status_code=response.status_code,
-                detail=f"Azure AI generation failed ({response.status_code}): {response.text}",
+                detail=f"Image generation failed ({response.status_code}): {response.text}",
             )
 
     async def generate_portrait(
@@ -396,7 +396,7 @@ class AzureImageClient:
                                     "attempt": attempt,
                                     "position": 0,
                                     "estimated_seconds": int(self.ESTIMATED_GEN_DURATION),
-                                    "message": f"Generating portrait with Azure AI... (~15-20s left)",
+                                    "message": "Generating your portrait... (~15-20s left)",
                                 })
                                 if asyncio.iscoroutine(res):
                                     await res
@@ -434,7 +434,7 @@ class AzureImageClient:
                                         "attempt": attempt + 1,
                                         "max_retries": max_retries,
                                         "wait_seconds": 30,
-                                        "message": f"Azure rate limit reached — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
+                                        "message": f"Queue paused for capacity — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
                                     })
                                     if asyncio.iscoroutine(res):
                                         await res
@@ -471,13 +471,13 @@ class AzureImageClient:
                             continue
                         raise HTTPException(
                             status_code=502,
-                            detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
+                            detail=f"Image generation failed after {max_retries} attempts: {str(exc)}",
                         )
 
                 if last_error:
                     raise last_error
 
-                raise HTTPException(status_code=500, detail="Azure generation ended without result.")
+                raise HTTPException(status_code=500, detail="Image generation ended without result.")
 
         finally:
             if waiting_item in self._waiting_jobs:

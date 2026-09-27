@@ -343,7 +343,7 @@ async def get_queue_status():
         "waiting_jobs": 0,
         "total_in_queue": 0,
         "estimated_wait_seconds": 0,
-        "status_text": "Ready (Local GPU)",
+        "status_text": "Ready",
     }
 
 
@@ -356,7 +356,7 @@ async def get_today_trend(request: Request, x_client_token: Optional[str] = Head
         "trend": TODAY_TREND,
         "themes": THEMES,
         "engine": settings.ENGINE,
-        "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
+        "engine_name": "AI Studio Pro",
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
         "queue_enabled": True if settings.ENGINE == "azure" else False,
         "quota": {
@@ -456,11 +456,11 @@ async def generate_trend_image(
                             "prompt_used": final_prompt,
                             "gender": gender,
                             "aspect_ratio": "4:5",
-                            "engine_used": "azure_gpt_image_2.5_flare",
+                            "engine_used": "ai_portrait_engine",
                             "photos_received": 1,
                             "image_url": f"/api/trends/outputs/{filename}",
                             "queue_active": True,
-                            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+                            "message": "Successfully generated 4:5 portrait."
                         })
                     except HTTPException as http_exc:
                         await event_queue.put({
@@ -472,7 +472,7 @@ async def generate_trend_image(
                         await event_queue.put({
                             "type": "error",
                             "status_code": 500,
-                            "detail": f"Azure generation failed: {str(exc)}",
+                            "detail": f"Image generation failed: {str(exc)}",
                         })
 
                 gen_task = asyncio.create_task(run_generation())
@@ -518,11 +518,11 @@ async def generate_trend_image(
             "prompt_used": final_prompt,
             "gender": gender,
             "aspect_ratio": "4:5",
-            "engine_used": "azure_gpt_image_2.5_flare",
+            "engine_used": "ai_portrait_engine",
             "photos_received": 1,
             "image_url": f"/api/trends/outputs/{output_filename}",
             "queue_active": True,
-            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+            "message": "Successfully generated 4:5 portrait."
         }
 
     # --- Local FLUX.1 + ComfyUI Branch ---
