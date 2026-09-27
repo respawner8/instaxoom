@@ -90,7 +90,7 @@ class AzureImageClient:
         deployment_name = settings.AZURE_AI_DEPLOYMENT
         size = "1024x1024"
 
-        # Attempt 1: Using official OpenAI async SDK
+        # Attempt 1: Using client.images.edit to preserve the user's face likeness
         try:
             from openai import AsyncOpenAI
 
@@ -100,12 +100,27 @@ class AzureImageClient:
                 timeout=90.0,
             )
 
-            img_resp = await client.images.generate(
-                model=deployment_name,
-                prompt=prompt,
-                n=1,
-                size=size,
+            edit_prompt = (
+                f"Transform the person in the photo into this portrait aesthetic while strictly preserving their face, "
+                f"facial structure, and likeness: {prompt}"
             )
+
+            # Try images.edit with user photo
+            try:
+                img_resp = await client.images.edit(
+                    model=deployment_name,
+                    image=("user_face.png", photo_bytes, "image/png"),
+                    prompt=edit_prompt,
+                    size=size,
+                )
+            except Exception as edit_err:
+                print(f"[AzureImageClient Edit Warning] images.edit failed ({edit_err}), trying images.generate...")
+                img_resp = await client.images.generate(
+                    model=deployment_name,
+                    prompt=prompt,
+                    n=1,
+                    size=size,
+                )
 
             if not img_resp.data:
                 raise RuntimeError("Azure AI returned empty image data array.")
