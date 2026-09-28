@@ -7,15 +7,20 @@ import aiofiles
 import httpx
 from datetime import date
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Request, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from app.services.comfy_client import comfy_client
 from app.services.azure_image_client import azure_image_client
 from app.core.config import settings
+from app.core.db import AsyncSessionLocal
+from app.api.deps import get_current_user, get_current_user_optional
+from app.models.user import User, UserCredit, CreditTransaction
 
 router = APIRouter(prefix="/api/trends", tags=["Daily Trends"])
+
 
 # Hardcoded active Daily Trend definition (easily plugged into PostgreSQL)
 # Multi-Theme Presets (Easily extended or linked to PostgreSQL)
@@ -348,10 +353,15 @@ async def get_queue_status():
 
 
 @router.get("/today")
-async def get_today_trend(request: Request, x_client_token: Optional[str] = Header(None)):
+async def get_today_trend(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    x_client_token: Optional[str] = Header(None)
+):
     """
     Returns today's active platform trend along with full themes catalogue and active engine metadata.
     """
+    credits = current_user.credit.balance if (current_user and current_user.credit) else 0
     return {
         "trend": TODAY_TREND,
         "themes": THEMES,
@@ -360,26 +370,32 @@ async def get_today_trend(request: Request, x_client_token: Optional[str] = Head
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
         "queue_enabled": True if settings.ENGINE == "azure" else False,
         "quota": {
-            "remaining_generations": 999,
+            "remaining_generations": credits if current_user else 0,
             "reset_in_seconds": 86400,
-            "limit_per_day": "unlimited",
+            "limit_per_day": "credits",
             "rate_limit_enabled": False,
-        }
+        },
+        "user_credits": credits if current_user else None,
     }
 
 
 @router.get("/quota")
-async def check_quota(request: Request, x_client_token: Optional[str] = Header(None)):
+async def check_quota(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    x_client_token: Optional[str] = Header(None)
+):
     """
-    Checks remaining generations for the client.
-    Rate limiting is disabled for local development (unlimited generations).
+    Checks remaining generations / credits for the client.
     """
     client_id = get_client_fingerprint(request, x_client_token)
+    credits = current_user.credit.balance if (current_user and current_user.credit) else 0
     return {
         "client_id": client_id,
-        "remaining_generations": 999,
+        "remaining_generations": credits,
+        "user_credits": credits,
         "reset_in_seconds": 86400,
-        "limit_per_day": "unlimited",
+        "limit_per_day": "credits",
         "rate_limit_enabled": False,
     }
 
@@ -396,14 +412,49 @@ async def generate_trend_image(
     engine: Optional[str] = Form(None),
     stream: Optional[bool] = Form(False),
     x_client_token: Optional[str] = Header(None),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Accepts user photo(s), executes the inference workflow via either
-    local FLUX.1 (ComfyUI + PuLID) or cloud Azure AI Foundry (gpt-image-2.5-flare),
+    Accepts user photo(s), verifies user credit balance (requires >= 1 credit),
+    executes the inference workflow via either local FLUX.1 (ComfyUI + PuLID)
+    or cloud Azure AI Foundry (gpt-image-2.5-flare), deducts 1 credit upon success,
     and returns the URL of the generated 4:5 Instagram portrait.
     Supports real-time SSE streaming for live queue position and countdown tracking.
     """
+    if not current_user.credit or current_user.credit.balance < 1:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Insufficient credits. You need at least 1 credit to generate an image. Please contact an admin for trial credits.",
+        )
+
+    selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+
+    async def deduct_user_credit(job_id_val: str, theme_id_val: str) -> int:
+        async with AsyncSessionLocal() as session:
+            stmt = select(UserCredit).where(UserCredit.user_id == current_user.id)
+            res = await session.execute(stmt)
+            credit_rec = res.scalar_one_or_none()
+            if not credit_rec or credit_rec.balance < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Insufficient credits. You need at least 1 credit to generate a portrait.",
+                )
+            credit_rec.balance -= 1
+            new_balance = credit_rec.balance
+            tx = CreditTransaction(
+                user_id=current_user.id,
+                amount=-1,
+                balance_after=new_balance,
+                action="generation",
+                description=f"Generated portrait ({selected_theme.get('title', 'theme')})",
+                meta_data={"job_id": job_id_val, "theme_id": theme_id_val},
+            )
+            session.add(tx)
+            await session.commit()
+            return new_balance
+
     active_engine = (engine or settings.ENGINE).lower()
+
 
     # --- Azure AI Foundry Branch ---
     if active_engine == "azure":
@@ -447,6 +498,7 @@ async def generate_trend_image(
                             job_id=job_id,
                             on_status=on_status_update,
                         )
+                        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
                         await event_queue.put({
                             "type": "completed",
                             "status": "completed",
@@ -460,6 +512,10 @@ async def generate_trend_image(
                             "photos_received": 1,
                             "image_url": f"/api/trends/outputs/{filename}",
                             "queue_active": True,
+                            "remaining_credits": remaining_credits,
+                            "quota": {
+                                "remaining_generations": remaining_credits,
+                            },
                             "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
                         })
                     except HTTPException as http_exc:
@@ -509,6 +565,7 @@ async def generate_trend_image(
             aspect_ratio=aspect_ratio,
             job_id=job_id,
         )
+        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
 
         return {
             "status": "completed",
@@ -522,8 +579,13 @@ async def generate_trend_image(
             "photos_received": 1,
             "image_url": f"/api/trends/outputs/{output_filename}",
             "queue_active": True,
+            "remaining_credits": remaining_credits,
+            "quota": {
+                "remaining_generations": remaining_credits,
+            },
             "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
         }
+
 
     # --- Local FLUX.1 + ComfyUI Branch ---
     # 1. Validate photos
@@ -624,6 +686,7 @@ async def generate_trend_image(
             raise RuntimeError(f"ComfyUI completed prompt {prompt_id} but returned no output image.")
 
         image_url = f"/api/trends/outputs/{output_filename}"
+        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
 
         return {
             "status": "completed",
@@ -638,13 +701,15 @@ async def generate_trend_image(
             "photos_received": len(saved_filenames),
             "identity_conditioning": identity_conditioning,
             "image_url": image_url,
+            "remaining_credits": remaining_credits,
             "quota": {
-                "remaining_generations": 999,
+                "remaining_generations": remaining_credits,
                 "reset_in_seconds": 86400,
                 "rate_limit_enabled": False,
             },
             "message": "Successfully generated 4:5 Instagram trend portrait."
         }
+
 
     except Exception as exc:
         print(f"[Generate Error] Inference failed: {exc}")

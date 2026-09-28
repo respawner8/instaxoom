@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
   title: "instaXoom | Daily AI Trends for Instagram",
@@ -14,8 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-[#09090b] text-[#fafafa] selection:bg-pink-500 selection:text-white">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
 }
+

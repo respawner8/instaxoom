@@ -15,6 +15,26 @@ class Settings(BaseSettings):
     # PostgreSQL
     DATABASE_URL: str = "postgresql+asyncpg://instaxoom:instaxoom_secret_password@db:5432/instaxoom_db"
 
+    # Authentication & Admin
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    ADMIN_EMAILS: str = "admin@instaxoom.com"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
+    @property
+    def admin_emails_list(self) -> List[str]:
+        return [email.strip().lower() for email in self.ADMIN_EMAILS.split(",") if email.strip()]
+
+    @property
+    def async_database_url(self) -> str:
+        url = self.DATABASE_URL.strip()
+        # Normalize postgres / postgresql schemes to asyncpg
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
     # Redis & Rate Limiting
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

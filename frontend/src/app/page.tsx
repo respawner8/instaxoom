@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { GoogleLogin } from "@react-oauth/google";
+import { useAuth } from "@/context/AuthContext";
 import {
   Sparkles,
   Upload,
@@ -21,9 +25,13 @@ import {
   Check,
   Cloud,
   Clock,
-  Zap
+  Zap,
+  Shield,
+  Coins,
+  LogOut,
 } from "lucide-react";
 import { autoCropAndDetectFace, ProcessedPhotoResult } from "@/lib/faceCropper";
+
 
 interface Theme {
   id: string;
@@ -96,10 +104,26 @@ interface QueueStatusInfo {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const { user, token, loginWithGoogle, logout, updateCredits, isConfigured } = useAuth();
+
   const envEngine = (process.env.NEXT_PUBLIC_ENGINE || "flux").toLowerCase();
   const [activeEngine, setActiveEngine] = useState<string>(envEngine);
   const isAzure = activeEngine === "azure";
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (!credentialResponse.credential) return;
+    try {
+      const loggedInUser = await loginWithGoogle(credentialResponse.credential);
+      if (loggedInUser.role === "admin") {
+        router.push("/admin");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to sign in with Google.");
+    }
+  };
+
 
   // Live queue & estimated wait time states
   const [queueStatus, setQueueStatus] = useState<QueueStatusInfo | null>(null);
@@ -282,6 +306,14 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
+    if (!user || !token) {
+      setErrorMessage("Please sign in with Google to generate AI portraits.");
+      return;
+    }
+    if (user.credits < 1) {
+      setErrorMessage("You have 0 credits remaining. Please contact an admin to receive trial credits.");
+      return;
+    }
     if (uploadedFiles.length === 0 || cooldownSeconds > 0) return;
     setIsGenerating(true);
     setGenerationProgress(10);
@@ -315,6 +347,9 @@ export default function Home() {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/api/trends/generate`, {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: formData,
       });
 
@@ -367,6 +402,11 @@ export default function Home() {
                   } else if (event.type === "completed" && event.image_url) {
                     clearInterval(interval);
                     setGenerationProgress(100);
+                    if (typeof event.remaining_credits === "number") {
+                      updateCredits(event.remaining_credits);
+                    } else {
+                      updateCredits(Math.max(0, user.credits - 1));
+                    }
                     const fullUrl = event.image_url.startsWith("http")
                       ? event.image_url
                       : `${apiUrl}${event.image_url}`;
@@ -389,12 +429,21 @@ export default function Home() {
 
         if (res.ok && data.image_url) {
           setGenerationProgress(100);
+          if (typeof data.remaining_credits === "number") {
+            updateCredits(data.remaining_credits);
+          } else {
+            updateCredits(Math.max(0, user.credits - 1));
+          }
           const fullUrl = data.image_url.startsWith("http")
             ? data.image_url
             : `${apiUrl}${data.image_url}`;
           setGeneratedImage(fullUrl);
         } else {
-          if (res.status === 429) {
+          if (res.status === 401) {
+            setErrorMessage("Session expired. Please sign in with Google again.");
+          } else if (res.status === 402) {
+            setErrorMessage(data.detail || "Insufficient credits. Please request trial credits from your admin.");
+          } else if (res.status === 429) {
             if (isAzure) setCooldownSeconds(15);
             setErrorMessage(data.detail || "Server queue is currently processing. Please wait a moment.");
           } else {
@@ -404,6 +453,7 @@ export default function Home() {
       }
     } catch (err: any) {
       clearInterval(interval);
+
       console.error("Generation request error:", err);
       setErrorMessage(err?.message || "Failed to reach inference server. Please check the backend connection.");
     } finally {
@@ -560,7 +610,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0a0a0c] text-neutral-100 flex flex-col">
       {/* Top Navigation */}
-      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-rose-500/20">
             X
@@ -571,13 +621,74 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 border border-neutral-800 text-xs font-medium text-neutral-200 shadow-sm">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 border border-neutral-800 text-xs font-medium text-neutral-200 shadow-sm">
             <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400" : "bg-emerald-400"} animate-pulse`} />
             <Sparkles className="w-3.5 h-3.5 text-rose-400" />
             <span>AI Studio &bull; {queueStatus ? queueStatus.status_text : "Online"}</span>
           </div>
+
+          {user ? (
+            <div className="flex items-center gap-2.5">
+              {/* Live Credit Badge */}
+              <div
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm"
+                title={`${user.credits} image generation credit${user.credits === 1 ? "" : "s"} available`}
+              >
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                <span>{user.credits} Credit{user.credits === 1 ? "" : "s"}</span>
+              </div>
+
+              {/* Admin Portal Button */}
+              {user.role === "admin" && (
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25 transition text-xs font-bold shadow-sm"
+                >
+                  <Shield className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Admin Portal</span>
+                </Link>
+              )}
+
+              {/* User Avatar & Logout */}
+              <div className="flex items-center gap-2 pl-1 border-l border-neutral-800">
+                {user.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt={user.name || user.email}
+                    className="w-7 h-7 rounded-full border border-neutral-700"
+                    title={user.email}
+                  />
+                ) : (
+                  <div
+                    className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-[11px] font-bold text-rose-300"
+                    title={user.email}
+                  >
+                    {user.email[0].toUpperCase()}
+                  </div>
+                )}
+                <button
+                  onClick={logout}
+                  className="p-1 text-neutral-400 hover:text-rose-400 transition"
+                  title="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setErrorMessage("Google login failed")}
+                theme="filled_black"
+                shape="pill"
+                size="medium"
+              />
+            </div>
+          )}
         </div>
       </header>
+
 
       {/* Hero / Header */}
       <div className="max-w-4xl mx-auto w-full px-4 pt-10 pb-16 flex-1 flex flex-col items-center">
@@ -817,12 +928,63 @@ export default function Home() {
 
           {/* Step 5: Generate CTA */}
           <div className="space-y-3">
+            {!user ? (
+              <div className="p-4 rounded-2xl border border-neutral-800 bg-neutral-950/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-rose-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm text-neutral-100">Sign in with Google to Generate</div>
+                    <div className="text-xs text-neutral-400">1 image = 1 credit. New accounts require trial credit activation.</div>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => setErrorMessage("Google Sign-in was cancelled or failed.")}
+                    theme="filled_black"
+                    shape="pill"
+                    size="medium"
+                  />
+                </div>
+              </div>
+            ) : user.credits < 1 ? (
+              <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Coins className="w-6 h-6 text-amber-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-sm">0 Credits Remaining</div>
+                    <div className="text-xs text-amber-300/80">
+                      You need at least 1 credit to generate portraits. Contact an admin to receive trial credits.
+                    </div>
+                  </div>
+                </div>
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin"
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs whitespace-nowrap hover:bg-amber-400 transition"
+                  >
+                    Grant Myself Credits &rarr;
+                  </Link>
+                )}
+              </div>
+            ) : null}
+
             <button
               type="button"
-              disabled={uploadedFiles.length === 0 || isGenerating || cooldownSeconds > 0}
+              disabled={
+                !user ||
+                user.credits < 1 ||
+                uploadedFiles.length === 0 ||
+                isGenerating ||
+                cooldownSeconds > 0
+              }
               onClick={handleGenerate}
               className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 text-base transition-all shadow-xl ${
-                cooldownSeconds > 0
+                !user || user.credits < 1
+                  ? "bg-neutral-800/60 text-neutral-500 border border-neutral-800 cursor-not-allowed"
+                  : cooldownSeconds > 0
                   ? "bg-amber-950/40 border border-amber-800/50 text-amber-300 cursor-not-allowed"
                   : uploadedFiles.length === 0 || isGenerating
                   ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
@@ -857,13 +1019,26 @@ export default function Home() {
                   <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
                   <span>Queue Cooldown ({cooldownSeconds}s)</span>
                 </>
+              ) : !user ? (
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  <span>Sign in with Google to Generate</span>
+                </div>
+              ) : user.credits < 1 ? (
+                <div className="flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-neutral-500" />
+                  <span>0 Credits Remaining (Trial Required)</span>
+                </div>
               ) : (
                 <>
                   <Sparkles className="w-5 h-5" />
-                  <span>Generate {selectedTheme.title} Portrait</span>
+                  <span>
+                    Generate {selectedTheme.title} Portrait &bull; 1 Credit ({user.credits} left)
+                  </span>
                 </>
               )}
             </button>
+
 
             {/* Live Queue Progress Card during generation */}
             {isGenerating && isAzure && (
