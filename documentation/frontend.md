@@ -1,6 +1,6 @@
 # Frontend Architecture & Client Guide
 
-This document outlines the architecture, UX design, and Instagram integration for the **instaXoom** web client and future mobile extensions.
+This document outlines the architecture, UX design, authentication, and Instagram integration for the **instaXoom** web client.
 
 ---
 
@@ -8,41 +8,39 @@ This document outlines the architecture, UX design, and Instagram integration fo
 
 - **Framework:** Next.js 15 (App Router)
 - **UI & Styling:** React 19, Tailwind CSS
+- **Authentication:** `@react-oauth/google` with persistent JWT storage (`localStorage`)
 - **Icons:** Lucide React
+- **Face Processing:** `@vladmandic/face-api` (client-side 4:5 auto-framing and gender estimation)
 - **Type Safety:** TypeScript 5.4+
-- **Containerization:** Node 20 Alpine multi-stage Docker build
 
 ---
 
 ## 2. Core Modules & User Flows
 
-### A. Multi-Theme Selection & Daily Trend
-- Fetches available themes from the backend (`GET /api/trends/today`).
-- Features 5 curated aesthetic presets:
-  - **1990s Yearbook:** 35mm flash, textured blue backdrop, vintage clothing.
-  - **Cyberpunk 2077:** Night city neon reflections, volumetric magenta/cyan rim lighting.
-  - **1970s Warm Polaroid:** Faded Kodachrome tones, subtle light leaks, candid 70s fashion.
-  - **Old Money / Quiet Luxury:** Lake Como terrace garden, golden hour bokeh, tailored cream blazer.
-  - **Studio Ghibli Anime:** Whimsical painterly watercolor skies, anime aesthetic, Miyazaki art style.
-- Visual theme cards display active glow states, tags, and instantly switch the prompt context.
+### A. Authentication & Credit Management (`AuthContext.tsx`)
+- **Google Sign-In:** Integrates Google Identity Services via `@react-oauth/google`.
+- **Session Persistence:** Saves backend-issued JWT token to `localStorage` (`instaxoom_jwt`).
+- **Live Credit Tracking:** Top bar displays live credit balance badge (`✨ X Credits`).
+- **Role Routing:** If a signed-in user has `role === "admin"`, the client automatically redirects to the `/admin` portal.
 
-### B. Dev & Real-Time Prompt Customizer
-- **Interactive Prompt Box (`<textarea>`):** Allows developers and power users to modify prompt details (lighting, attire, expressions, backdrops) in real time before generating.
-- **Reset to Theme Default:** Single-click button to revert custom edits back to the theme's core prompt template.
-- **Quick Add Modifiers:** Clickable chips for instant prompt styling (`+ smiling warmly`, `+ 35mm direct flash`, `+ vintage leather jacket`, `+ cinematic rim lighting`, `+ soft bokeh background`).
+### B. Daily Trend Studio (`/`)
+- **Theme Catalogue:** 5 curated aesthetic presets (1990s Yearbook, Cyberpunk 2077, 1970s Polaroid, Old Money Luxury, Studio Ghibli).
+- **Prompt Customizer:** Allows real-time prompt modifications and modifier chip injection (`+ smiling warmly`, `+ 35mm direct flash`).
+- **Face Uploader & Auto-Cropper:** Auto-frames uploaded face photos into optimal 4:5 portrait dimensions.
+- **Generate CTA Button:**
+  - Prompt to sign in with Google if unauthenticated.
+  - Displays "0 Credits Remaining (Trial Required)" if balance is exhausted.
+  - Displays `Generate Portrait • 1 Credit (X left)` when credits are available.
 
-### C. Multi-Photo Face Uploader & PuLID Likeness
-- **File Input:** Accepts 1 to 5 selfie photos (JPEG, PNG, WEBP).
-- **Visual Feedback:** Shows instant thumbnail previews of all selected photos with individual remove buttons.
-- **Face Likeness:** Photos condition the facial identity in ComfyUI via PuLID-Flux and InsightFace AntelopeV2.
+### C. Admin Portal (`/admin`)
+- **Protected View:** Accessible only to users whose email matches `ADMIN_EMAILS`. Unauthorized visitors are redirected to `/`.
+- **Trial Credit Grant Form:** Assigns credits directly to existing users or reserves them in `pending_credits` for users who haven't signed up yet.
+- **KPI Summary Cards:** Displays Registered Users, Circulating Credits, Pending Grants, and Total Transactions.
+- **Tabbed Tables:** Searchable User Directory, Pending Grants waiting for signup, and a full Transaction Audit Log.
 
-### D. Instagram Aspect Ratio (Standard 4:5 Portrait)
-- **Format:** `4:5` Portrait (864 × 1080 / 1080 × 1350)
-- **Rationale:** The 4:5 vertical aspect ratio maximizes screen real estate in the Instagram mobile feed, achieving the highest visual engagement compared to square or landscape formats.
-
-### E. Export & Instagram Sharing
+### D. Export & Instagram Sharing
 - **Web Share API (`navigator.share`):** On mobile devices, clicking "Share to Instagram" triggers the native OS share sheet directly into Instagram.
-- **Desktop Fallback:** Automatically copies trending hashtags (`#90sYearbook #instaXoom`) to clipboard and downloads the high-res generated portrait.
+- **WhatsApp Web & Clipboard:** Automatically copies generated portrait image to the system clipboard for immediate pasting into WhatsApp Web or Instagram Direct.
 
 ---
 
@@ -51,21 +49,18 @@ This document outlines the architecture, UX design, and Instagram integration fo
 ```
 frontend/
 ├── src/
-│   └── app/
-│       ├── layout.tsx       # Root metadata, theme, and font setup
-│       ├── page.tsx         # Daily Trend generator, photo uploader & share modal
-│       └── globals.css      # Dark mode color tokens & base Tailwind styling
-├── public/                  # Static assets and favicons
-├── package.json             # Next.js 15 dependencies
-├── tailwind.config.ts       # Theme configuration & Instagram accent colors
-└── tsconfig.json            # Strict TypeScript configuration
+│   ├── app/
+│   │   ├── admin/
+│   │   │   └── page.tsx      # Admin dashboard for credit management & audit logs
+│   │   ├── layout.tsx        # Root layout wrapped in AuthProvider
+│   │   ├── page.tsx          # Daily Trend generator & Instagram export UI
+│   │   └── globals.css       # Dark mode color tokens & base Tailwind styling
+│   ├── context/
+│   │   └── AuthContext.tsx   # Google OAuth, JWT persistence & credit state
+│   └── lib/
+│       └── faceCropper.ts    # Client-side 4:5 face detection & framing
+├── public/                   # Static assets, models, and favicons
+├── package.json              # Next.js 15 dependencies
+├── tailwind.config.ts        # Theme configuration & accent colors
+└── tsconfig.json             # Strict TypeScript configuration
 ```
-
----
-
-## 4. Mobile Roadmap (Web Now, Android Later)
-
-- **Phase 1 (Current):** Responsive Mobile Web running in Next.js 15.
-- **Phase 2 (Android):**
-  - Reuses backend REST API contracts (`/api/trends/today`, `/api/trends/generate`).
-  - Native Android implementation can leverage Jetpack Compose for system photo pickers and direct Android `Intent.ACTION_SEND` targeting the Instagram package (`com.instagram.android`).
