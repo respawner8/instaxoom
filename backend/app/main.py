@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.db import init_db
+from app.core.telemetry import configure_telemetry
 from app.api.trends import router as trends_router
 from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
@@ -13,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Configure OpenTelemetry FIRST — before DB init or any IO.
+    # This is a no-op when OTEL_ENDPOINT is not set in .env.
+    configure_telemetry(app)
+
     # Startup: Initialize PostgreSQL tables if configured
     try:
         await init_db()
