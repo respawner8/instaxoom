@@ -8,6 +8,7 @@ from app.core.telemetry import configure_telemetry
 from app.api.trends import router as trends_router
 from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
+from app.api.telemetry import router as telemetry_router
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(trends_router)
+app.include_router(telemetry_router)
 
 
 @app.get("/")
