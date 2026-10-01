@@ -12,6 +12,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from app.core.config import settings
+from app.core.app_metrics import azure_duration_histogram, azure_queue_wait_histogram
 
 tracer = trace.get_tracer("instaxoom.azure")
 
@@ -163,6 +164,7 @@ class AzureImageClient:
         size: str,
         output_filepath: str,
     ) -> bool:
+        start_time = time.time()
         with tracer.start_as_current_span("azure.gpt_image_flare") as span:
             span.set_attribute("azure.deployment", deployment_name)
             span.set_attribute("azure.size", size)
@@ -171,9 +173,15 @@ class AzureImageClient:
                 res = await self._do_execute_attempt(
                     base_url, deployment_name, photo_bytes, prompt, size, output_filepath
                 )
+                duration = time.time() - start_time
+                azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "success"})
+                span.set_attribute("azure.duration_seconds", duration)
                 span.set_status(Status(StatusCode.OK))
                 return res
             except Exception as exc:
+                duration = time.time() - start_time
+                azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "error"})
+                span.set_attribute("azure.duration_seconds", duration)
                 span.record_exception(exc)
                 span.set_status(Status(StatusCode.ERROR, str(exc)))
                 raise
@@ -389,6 +397,7 @@ class AzureImageClient:
                 elapsed = now - self._last_dispatch_time
                 if self._last_dispatch_time > 0 and elapsed < self.MIN_INTERVAL_SECONDS:
                     wait_time = self.MIN_INTERVAL_SECONDS - elapsed
+                    azure_queue_wait_histogram.record(wait_time, {"reason": "rate_limit_spacing"})
                     with tracer.start_as_current_span("azure.queue_spacing_wait") as wait_span:
                         wait_span.set_attribute("queue.wait_seconds", wait_time)
                         print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
