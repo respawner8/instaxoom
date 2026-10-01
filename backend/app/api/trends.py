@@ -20,6 +20,14 @@ from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User, UserCredit, CreditTransaction
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+from app.core.app_metrics import (
+    generation_attempts,
+    generation_success,
+    generation_failure,
+    credit_deductions,
+    credit_rejections,
+    revenue_integrity_anomalies,
+)
 
 tracer = trace.get_tracer("instaxoom.trends")
 
@@ -425,13 +433,18 @@ async def generate_trend_image(
     and returns the URL of the generated 4:5 Instagram portrait.
     Supports real-time SSE streaming for live queue position and countdown tracking.
     """
+    active_engine = (engine or settings.ENGINE).lower()
+    selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+
     if not current_user.credit or current_user.credit.balance < 1:
+        credit_rejections.add(1, {"user_role": current_user.role, "theme_id": selected_theme["id"]})
+        generation_failure.add(1, {"engine": active_engine, "error_type": "insufficient_credits"})
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Insufficient credits. You need at least 1 credit to generate an image. Please contact an admin for trial credits.",
         )
 
-    selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+    generation_attempts.add(1, {"engine": active_engine, "theme_id": selected_theme["id"]})
 
     async def deduct_user_credit(job_id_val: str, theme_id_val: str) -> int:
         with tracer.start_as_current_span("credit.deduct") as span:
@@ -462,10 +475,9 @@ async def generate_trend_image(
                 )
                 session.add(tx)
                 await session.commit()
+                credit_deductions.add(1, {"user_role": current_user.role, "theme_id": theme_id_val})
                 span.set_status(Status(StatusCode.OK))
                 return new_balance
-
-    active_engine = (engine or settings.ENGINE).lower()
 
 
     # --- Azure AI Foundry Branch ---
@@ -507,6 +519,7 @@ async def generate_trend_image(
                         span.set_attribute("gen.job_id", job_id)
                         span.set_attribute("gen.theme_id", selected_theme["id"])
                         span.set_attribute("gen.aspect_ratio", aspect_ratio)
+                        filename = None
                         try:
                             filename = await azure_image_client.generate_portrait(
                                 photo_bytes=photo_bytes,
@@ -515,7 +528,18 @@ async def generate_trend_image(
                                 job_id=job_id,
                                 on_status=on_status_update,
                             )
-                            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                            # Generation succeeded -> Deduct credit
+                            try:
+                                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                            except Exception:
+                                revenue_integrity_anomalies.add(1, {
+                                    "anomaly_type": "gen_success_no_deduct",
+                                    "engine": active_engine,
+                                    "theme_id": selected_theme["id"],
+                                })
+                                raise
+
+                            generation_success.add(1, {"engine": active_engine, "theme_id": selected_theme["id"]})
                             span.set_status(Status(StatusCode.OK))
                             await event_queue.put({
                                 "type": "completed",
@@ -537,6 +561,8 @@ async def generate_trend_image(
                                 "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
                             })
                         except HTTPException as http_exc:
+                            err_type = "throttled_429" if http_exc.status_code == 429 else f"http_{http_exc.status_code}"
+                            generation_failure.add(1, {"engine": active_engine, "error_type": err_type})
                             span.record_exception(http_exc)
                             span.set_status(Status(StatusCode.ERROR, str(http_exc.detail)))
                             await event_queue.put({
@@ -545,6 +571,7 @@ async def generate_trend_image(
                                 "detail": str(http_exc.detail),
                             })
                         except Exception as exc:
+                            generation_failure.add(1, {"engine": active_engine, "error_type": "server_error"})
                             span.record_exception(exc)
                             span.set_status(Status(StatusCode.ERROR, str(exc)))
                             await event_queue.put({
@@ -586,6 +613,7 @@ async def generate_trend_image(
             span.set_attribute("gen.job_id", job_id)
             span.set_attribute("gen.theme_id", selected_theme["id"])
             span.set_attribute("gen.aspect_ratio", aspect_ratio)
+            output_filename = None
             try:
                 output_filename = await azure_image_client.generate_portrait(
                     photo_bytes=photo_bytes,
@@ -593,9 +621,26 @@ async def generate_trend_image(
                     aspect_ratio=aspect_ratio,
                     job_id=job_id,
                 )
-                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                try:
+                    remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                except Exception:
+                    revenue_integrity_anomalies.add(1, {
+                        "anomaly_type": "gen_success_no_deduct",
+                        "engine": active_engine,
+                        "theme_id": selected_theme["id"],
+                    })
+                    raise
+
+                generation_success.add(1, {"engine": active_engine, "theme_id": selected_theme["id"]})
                 span.set_status(Status(StatusCode.OK))
+            except HTTPException as http_exc:
+                err_type = "throttled_429" if http_exc.status_code == 429 else f"http_{http_exc.status_code}"
+                generation_failure.add(1, {"engine": active_engine, "error_type": err_type})
+                span.record_exception(http_exc)
+                span.set_status(Status(StatusCode.ERROR, str(http_exc.detail)))
+                raise
             except Exception as e:
+                generation_failure.add(1, {"engine": active_engine, "error_type": "server_error"})
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 raise
@@ -716,10 +761,21 @@ async def generate_trend_image(
         output_filename = comfy_client.extract_output_filename(history)
 
         if not output_filename:
+            generation_failure.add(1, {"engine": "flux", "error_type": "no_output_image"})
             raise RuntimeError(f"ComfyUI completed prompt {prompt_id} but returned no output image.")
 
         image_url = f"/api/trends/outputs/{output_filename}"
-        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+        try:
+            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+        except Exception:
+            revenue_integrity_anomalies.add(1, {
+                "anomaly_type": "gen_success_no_deduct",
+                "engine": "flux",
+                "theme_id": selected_theme["id"],
+            })
+            raise
+
+        generation_success.add(1, {"engine": "flux", "theme_id": selected_theme["id"]})
 
         return {
             "status": "completed",
@@ -745,6 +801,7 @@ async def generate_trend_image(
 
 
     except Exception as exc:
+        generation_failure.add(1, {"engine": "flux", "error_type": "comfy_error"})
         print(f"[Generate Error] Inference failed: {exc}")
         raise HTTPException(
             status_code=500,

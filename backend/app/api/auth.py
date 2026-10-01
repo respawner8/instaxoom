@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import verify_google_id_token, create_access_token
+from app.core.app_metrics import user_logins, user_login_failures
 from app.models.user import User, UserCredit, PendingCredit, CreditTransaction
 from app.api.deps import get_current_user
 
@@ -40,7 +41,12 @@ async def login_with_google(body: GoogleAuthRequest, db: AsyncSession = Depends(
     Verifies Google ID token, logs in or registers user in PostgreSQL,
     claims any pending admin-granted credits, and issues an App JWT token.
     """
-    google_data = verify_google_id_token(body.credential)
+    try:
+        google_data = verify_google_id_token(body.credential)
+    except Exception as e:
+        user_login_failures.add(1, {"provider": "google", "reason": "token_verification_failed"})
+        raise
+
     email = google_data["email"].strip().lower()
     sub = google_data["sub"]
 
@@ -141,6 +147,9 @@ async def login_with_google(body: GoogleAuthRequest, db: AsyncSession = Depends(
 
         await db.commit()
         await db.refresh(user)
+
+    # Record successful login metric
+    user_logins.add(1, {"provider": "google", "role": user.role})
 
     # Issue JWT token
     access_token = create_access_token({
