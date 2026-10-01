@@ -8,8 +8,12 @@ from urllib.parse import urlparse
 import aiofiles
 import httpx
 from fastapi import HTTPException
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from app.core.config import settings
+
+tracer = trace.get_tracer("instaxoom.azure")
 
 OUTPUTS_DIR = os.path.join(os.getcwd(), "outputs")
 
@@ -151,6 +155,30 @@ class AzureImageClient:
         return f"{scheme}://{host}/openai/v1"
 
     async def _execute_single_attempt(
+        self,
+        base_url: str,
+        deployment_name: str,
+        photo_bytes: bytes,
+        prompt: str,
+        size: str,
+        output_filepath: str,
+    ) -> bool:
+        with tracer.start_as_current_span("azure.gpt_image_flare") as span:
+            span.set_attribute("azure.deployment", deployment_name)
+            span.set_attribute("azure.size", size)
+            span.set_attribute("azure.prompt_length", len(prompt))
+            try:
+                res = await self._do_execute_attempt(
+                    base_url, deployment_name, photo_bytes, prompt, size, output_filepath
+                )
+                span.set_status(Status(StatusCode.OK))
+                return res
+            except Exception as exc:
+                span.record_exception(exc)
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                raise
+
+    async def _do_execute_attempt(
         self,
         base_url: str,
         deployment_name: str,
@@ -361,23 +389,25 @@ class AzureImageClient:
                 elapsed = now - self._last_dispatch_time
                 if self._last_dispatch_time > 0 and elapsed < self.MIN_INTERVAL_SECONDS:
                     wait_time = self.MIN_INTERVAL_SECONDS - elapsed
-                    print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
-                    if on_status:
-                        try:
-                            res = on_status({
-                                "type": "spacing_wait",
-                                "job_id": unique_id,
-                                "position": 0,
-                                "wait_seconds": int(wait_time),
-                                "estimated_seconds": int(wait_time + self.ESTIMATED_GEN_DURATION),
-                                "message": f"Spacing requests for rate limit — Starting in {int(wait_time)}s...",
-                            })
-                            if asyncio.iscoroutine(res):
-                                await res
-                        except Exception as cb_err:
-                            print(f"[Azure Queue] on_status error: {cb_err}")
+                    with tracer.start_as_current_span("azure.queue_spacing_wait") as wait_span:
+                        wait_span.set_attribute("queue.wait_seconds", wait_time)
+                        print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
+                        if on_status:
+                            try:
+                                res = on_status({
+                                    "type": "spacing_wait",
+                                    "job_id": unique_id,
+                                    "position": 0,
+                                    "wait_seconds": int(wait_time),
+                                    "estimated_seconds": int(wait_time + self.ESTIMATED_GEN_DURATION),
+                                    "message": f"Spacing requests for rate limit — Starting in {int(wait_time)}s...",
+                                })
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            except Exception as cb_err:
+                                print(f"[Azure Queue] on_status error: {cb_err}")
 
-                    await asyncio.sleep(wait_time)
+                        await asyncio.sleep(wait_time)
 
                 self._active_job_id = unique_id
                 self._active_job_start = time.time()

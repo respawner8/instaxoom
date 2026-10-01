@@ -8,6 +8,7 @@ import React, {
   ReactNode,
 } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { measure, trackEvent } from "@/lib/telemetry";
 
 export interface User {
   id: string;
@@ -84,34 +85,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginWithGoogle = async (credential: string): Promise<User> => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const res = await fetch(`${apiUrl}/api/auth/google`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    return measure(
+      "auth.google_login",
+      async () => {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const res = await fetch(`${apiUrl}/api/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+
+        if (!res.ok) {
+          const err = await res
+            .json()
+            .catch(() => ({ detail: "Google authentication failed" }));
+          throw new Error(err.detail || "Authentication failed");
+        }
+
+        const data = await res.json();
+        const accessToken = data.access_token;
+        const userData: User = data.user;
+
+        localStorage.setItem("instaxoom_jwt", accessToken);
+        setToken(accessToken);
+        setUser(userData);
+
+        return userData;
       },
-      body: JSON.stringify({ credential }),
+      // Extra attributes recorded alongside duration_ms and status
+      { trigger: "google_oauth_button" }
+    ).then((userData) => {
+      // Emit a separate login success event with role info (measure only records duration)
+      trackEvent("auth.login_success", {
+        user_role: userData.role,
+        credits: userData.credits,
+      });
+      return userData;
     });
-
-    if (!res.ok) {
-      const err = await res
-        .json()
-        .catch(() => ({ detail: "Google authentication failed" }));
-      throw new Error(err.detail || "Authentication failed");
-    }
-
-    const data = await res.json();
-    const accessToken = data.access_token;
-    const userData: User = data.user;
-
-    localStorage.setItem("instaxoom_jwt", accessToken);
-    setToken(accessToken);
-    setUser(userData);
-
-    return userData;
   };
 
   const logout = () => {
+    trackEvent("auth.logout", { had_credits: user?.credits ?? 0 });
     localStorage.removeItem("instaxoom_jwt");
     setUser(null);
     setToken(null);

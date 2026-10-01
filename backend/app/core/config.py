@@ -8,6 +8,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "instaXoom"
     SECRET_KEY: str = "change-this-to-a-secure-random-secret-key-in-production"
 
+    # OpenTelemetry — Grafana Cloud OTLP export
+    # Use the exact env var names Grafana Cloud provides on their OTel setup page.
+    # Leave empty to disable (safe for local dev — app starts normally without them).
+    # OTEL_EXPORTER_OTLP_ENDPOINT: e.g. "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+    # OTEL_EXPORTER_OTLP_HEADERS:  e.g. "Authorization=Basic eyJ..."
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
