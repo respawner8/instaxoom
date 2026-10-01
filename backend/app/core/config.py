@@ -9,11 +9,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-this-to-a-secure-random-secret-key-in-production"
 
     # OpenTelemetry — Grafana Cloud OTLP export
-    # Set both to enable telemetry. Leave empty to disable (safe for local dev).
-    # OTEL_ENDPOINT: e.g. "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
-    # OTEL_AUTH_TOKEN: base64("<grafanaInstanceId>:<grafanaApiKey>")
-    OTEL_ENDPOINT: str = ""
-    OTEL_AUTH_TOKEN: str = ""
+    # Use the exact env var names Grafana Cloud provides on their OTel setup page.
+    # Leave empty to disable (safe for local dev — app starts normally without them).
+    # OTEL_EXPORTER_OTLP_ENDPOINT: e.g. "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+    # OTEL_EXPORTER_OTLP_HEADERS:  e.g. "Authorization=Basic eyJ..."
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
 
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000

@@ -18,6 +18,10 @@ from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User, UserCredit, CreditTransaction
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+tracer = trace.get_tracer("instaxoom.trends")
 
 router = APIRouter(prefix="/api/trends", tags=["Daily Trends"])
 
@@ -430,28 +434,36 @@ async def generate_trend_image(
     selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
 
     async def deduct_user_credit(job_id_val: str, theme_id_val: str) -> int:
-        async with AsyncSessionLocal() as session:
-            stmt = select(UserCredit).where(UserCredit.user_id == current_user.id)
-            res = await session.execute(stmt)
-            credit_rec = res.scalar_one_or_none()
-            if not credit_rec or credit_rec.balance < 1:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Insufficient credits. You need at least 1 credit to generate a portrait.",
+        with tracer.start_as_current_span("credit.deduct") as span:
+            span.set_attribute("user.id", str(current_user.id))
+            span.set_attribute("credit.job_id", job_id_val)
+            span.set_attribute("credit.theme_id", theme_id_val)
+            async with AsyncSessionLocal() as session:
+                stmt = select(UserCredit).where(UserCredit.user_id == current_user.id)
+                res = await session.execute(stmt)
+                credit_rec = res.scalar_one_or_none()
+                if not credit_rec or credit_rec.balance < 1:
+                    span.set_status(Status(StatusCode.ERROR, "Insufficient credits"))
+                    raise HTTPException(
+                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                        detail="Insufficient credits. You need at least 1 credit to generate a portrait.",
+                    )
+                credit_rec.balance -= 1
+                new_balance = credit_rec.balance
+                span.set_attribute("credit.balance_before", new_balance + 1)
+                span.set_attribute("credit.balance_after", new_balance)
+                tx = CreditTransaction(
+                    user_id=current_user.id,
+                    amount=-1,
+                    balance_after=new_balance,
+                    action="generation",
+                    description=f"Generated portrait ({selected_theme.get('title', 'theme')})",
+                    meta_data={"job_id": job_id_val, "theme_id": theme_id_val},
                 )
-            credit_rec.balance -= 1
-            new_balance = credit_rec.balance
-            tx = CreditTransaction(
-                user_id=current_user.id,
-                amount=-1,
-                balance_after=new_balance,
-                action="generation",
-                description=f"Generated portrait ({selected_theme.get('title', 'theme')})",
-                meta_data={"job_id": job_id_val, "theme_id": theme_id_val},
-            )
-            session.add(tx)
-            await session.commit()
-            return new_balance
+                session.add(tx)
+                await session.commit()
+                span.set_status(Status(StatusCode.OK))
+                return new_balance
 
     active_engine = (engine or settings.ENGINE).lower()
 
@@ -490,46 +502,56 @@ async def generate_trend_image(
                     await event_queue.put(event_data)
 
                 async def run_generation():
-                    try:
-                        filename = await azure_image_client.generate_portrait(
-                            photo_bytes=photo_bytes,
-                            prompt=final_prompt,
-                            aspect_ratio=aspect_ratio,
-                            job_id=job_id,
-                            on_status=on_status_update,
-                        )
-                        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
-                        await event_queue.put({
-                            "type": "completed",
-                            "status": "completed",
-                            "job_id": job_id,
-                            "theme_id": selected_theme["id"],
-                            "theme_title": selected_theme["title"],
-                            "prompt_used": final_prompt,
-                            "gender": gender,
-                            "aspect_ratio": "4:5",
-                            "engine_used": "azure_gpt_image_2.5_flare",
-                            "photos_received": 1,
-                            "image_url": f"/api/trends/outputs/{filename}",
-                            "queue_active": True,
-                            "remaining_credits": remaining_credits,
-                            "quota": {
-                                "remaining_generations": remaining_credits,
-                            },
-                            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
-                        })
-                    except HTTPException as http_exc:
-                        await event_queue.put({
-                            "type": "error",
-                            "status_code": http_exc.status_code,
-                            "detail": str(http_exc.detail),
-                        })
-                    except Exception as exc:
-                        await event_queue.put({
-                            "type": "error",
-                            "status_code": 500,
-                            "detail": f"Azure generation failed: {str(exc)}",
-                        })
+                    with tracer.start_as_current_span("image.generate") as span:
+                        span.set_attribute("gen.engine", active_engine)
+                        span.set_attribute("gen.job_id", job_id)
+                        span.set_attribute("gen.theme_id", selected_theme["id"])
+                        span.set_attribute("gen.aspect_ratio", aspect_ratio)
+                        try:
+                            filename = await azure_image_client.generate_portrait(
+                                photo_bytes=photo_bytes,
+                                prompt=final_prompt,
+                                aspect_ratio=aspect_ratio,
+                                job_id=job_id,
+                                on_status=on_status_update,
+                            )
+                            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                            span.set_status(Status(StatusCode.OK))
+                            await event_queue.put({
+                                "type": "completed",
+                                "status": "completed",
+                                "job_id": job_id,
+                                "theme_id": selected_theme["id"],
+                                "theme_title": selected_theme["title"],
+                                "prompt_used": final_prompt,
+                                "gender": gender,
+                                "aspect_ratio": "4:5",
+                                "engine_used": "azure_gpt_image_2.5_flare",
+                                "photos_received": 1,
+                                "image_url": f"/api/trends/outputs/{filename}",
+                                "queue_active": True,
+                                "remaining_credits": remaining_credits,
+                                "quota": {
+                                    "remaining_generations": remaining_credits,
+                                },
+                                "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+                            })
+                        except HTTPException as http_exc:
+                            span.record_exception(http_exc)
+                            span.set_status(Status(StatusCode.ERROR, str(http_exc.detail)))
+                            await event_queue.put({
+                                "type": "error",
+                                "status_code": http_exc.status_code,
+                                "detail": str(http_exc.detail),
+                            })
+                        except Exception as exc:
+                            span.record_exception(exc)
+                            span.set_status(Status(StatusCode.ERROR, str(exc)))
+                            await event_queue.put({
+                                "type": "error",
+                                "status_code": 500,
+                                "detail": f"Azure generation failed: {str(exc)}",
+                            })
 
                 gen_task = asyncio.create_task(run_generation())
 
@@ -559,13 +581,24 @@ async def generate_trend_image(
                 },
             )
 
-        output_filename = await azure_image_client.generate_portrait(
-            photo_bytes=photo_bytes,
-            prompt=final_prompt,
-            aspect_ratio=aspect_ratio,
-            job_id=job_id,
-        )
-        remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+        with tracer.start_as_current_span("image.generate") as span:
+            span.set_attribute("gen.engine", active_engine)
+            span.set_attribute("gen.job_id", job_id)
+            span.set_attribute("gen.theme_id", selected_theme["id"])
+            span.set_attribute("gen.aspect_ratio", aspect_ratio)
+            try:
+                output_filename = await azure_image_client.generate_portrait(
+                    photo_bytes=photo_bytes,
+                    prompt=final_prompt,
+                    aspect_ratio=aspect_ratio,
+                    job_id=job_id,
+                )
+                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                span.set_status(Status(StatusCode.OK))
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
 
         return {
             "status": "completed",

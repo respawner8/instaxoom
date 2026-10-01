@@ -4,19 +4,24 @@ OpenTelemetry setup for instaXoom.
 Wires up all three signals — Traces (Tempo), Metrics (Mimir), Logs (Loki) —
 and sends them to Grafana Cloud via OTLP/gRPC.
 
+The OTel SDK automatically reads these standard env vars (set them in .env):
+  OTEL_EXPORTER_OTLP_ENDPOINT  — Grafana OTLP gateway URL
+  OTEL_EXPORTER_OTLP_HEADERS   — "Authorization=Basic <base64token>"
+
+Both are provided verbatim by Grafana Cloud's OTel setup page.
+When OTEL_EXPORTER_OTLP_ENDPOINT is not set, this is a complete no-op —
+the app starts normally with no telemetry (safe for local dev).
+
 Call configure_telemetry(app) once at the very start of the FastAPI lifespan,
 before init_db() or any other startup work.
-
-When OTEL_ENDPOINT is not set the function is a no-op, so local dev
-works without any Grafana credentials.
 """
 import logging
 
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -36,6 +41,10 @@ def configure_telemetry(app) -> None:
     """
     Initialise OpenTelemetry for the FastAPI application.
 
+    The OTel SDK reads OTEL_EXPORTER_OTLP_ENDPOINT and
+    OTEL_EXPORTER_OTLP_HEADERS automatically from the environment —
+    no need to pass them manually to each exporter.
+
     Registers:
       - TracerProvider  → Grafana Tempo  (distributed traces)
       - MeterProvider   → Grafana Mimir  (Prometheus-compatible metrics)
@@ -47,23 +56,26 @@ def configure_telemetry(app) -> None:
       - httpx outbound calls (Azure AI Foundry API calls)
       - Python standard logging (injects trace_id / span_id into every log line)
     """
-    # Lazily import settings here to avoid circular imports at module load time
+    import os
     from app.core.config import settings
 
-    if not settings.OTEL_ENDPOINT:
+    if not settings.OTEL_EXPORTER_OTLP_ENDPOINT:
         logger.info(
-            "OpenTelemetry disabled: OTEL_ENDPOINT is not set. "
-            "Set OTEL_ENDPOINT and OTEL_AUTH_TOKEN in .env to enable."
+            "OpenTelemetry disabled: OTEL_EXPORTER_OTLP_ENDPOINT is not set. "
+            "Add it to .env to enable (see Grafana Cloud → OpenTelemetry setup page)."
         )
         return
 
-    auth_headers = {}
-    if settings.OTEL_AUTH_TOKEN:
-        auth_headers = {"Authorization": f"Basic {settings.OTEL_AUTH_TOKEN}"}
+    # Critical fix: Pydantic loads .env into Settings attributes, but does NOT
+    # populate os.environ. The OpenTelemetry SDK exporters inspect os.environ.
+    # Without this, OTLPSpanExporter falls back to http://localhost:4318/v1/traces!
+    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = settings.OTEL_EXPORTER_OTLP_ENDPOINT
+    if settings.OTEL_EXPORTER_OTLP_HEADERS:
+        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = settings.OTEL_EXPORTER_OTLP_HEADERS
 
     # ── Shared resource identity ──────────────────────────────────────────────
-    # This label block appears on every trace, metric, and log in Grafana so
-    # you can filter by service name or environment across all three signal types.
+    # Appears on every trace, metric, and log in Grafana —
+    # use it to filter by service name or environment.
     resource = Resource.create(
         {
             "service.name": "instaxoom-backend",
@@ -73,74 +85,85 @@ def configure_telemetry(app) -> None:
     )
 
     # ── Traces → Grafana Tempo ────────────────────────────────────────────────
+    # OTLPSpanExporter reads OTEL_EXPORTER_OTLP_ENDPOINT & HEADERS from os.environ
+    span_exporter = OTLPSpanExporter()
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
-        BatchSpanProcessor(
-            OTLPSpanExporter(
-                endpoint=settings.OTEL_ENDPOINT,
-                headers=auth_headers,
-                # insecure=True only for local collector without TLS
-            )
-        )
+        BatchSpanProcessor(span_exporter)
     )
     trace.set_tracer_provider(tracer_provider)
-    logger.info("OTel TracerProvider configured → %s", settings.OTEL_ENDPOINT)
+    print(f"[OTel] ✓ TracerProvider target → {span_exporter._endpoint}")
 
     # ── Metrics → Grafana Mimir (Prometheus-compatible) ───────────────────────
-    metric_reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(
-            endpoint=settings.OTEL_ENDPOINT,
-            headers=auth_headers,
-        ),
-        export_interval_millis=30_000,  # push every 30 seconds
+    metric_exporter = OTLPMetricExporter()
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[
+            PeriodicExportingMetricReader(
+                metric_exporter,
+                export_interval_millis=30_000,
+            )
+        ],
     )
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
-    logger.info("OTel MeterProvider configured (30s export interval)")
+    print(f"[OTel] ✓ MeterProvider target → {metric_exporter._endpoint} (30s interval)")
 
     # ── Logs → Grafana Loki ───────────────────────────────────────────────────
-    # Bridges Python's standard logging into OTel so every logger.info/error/etc.
+    # Bridges Python's standard logging into OTel so every logger.info/error
     # is forwarded to Loki and automatically correlated with the active trace_id.
+    log_exporter = OTLPLogExporter()
     log_provider = LoggerProvider(resource=resource)
     log_provider.add_log_record_processor(
-        BatchLogRecordProcessor(
-            OTLPLogExporter(
-                endpoint=settings.OTEL_ENDPOINT,
-                headers=auth_headers,
-            )
-        )
+        BatchLogRecordProcessor(log_exporter)
     )
     set_logger_provider(log_provider)
 
-    # Attach to the root logger so all existing logger.xyz() calls are captured
-    otel_handler = LoggingHandler(level=logging.NOTSET, logger_provider=log_provider)
-    logging.getLogger().addHandler(otel_handler)
+    # Attach OTel handler to root logger — captures all existing logger.xyz() calls
+    # Set root logger level to INFO so info-level application logs are captured (default is WARNING).
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    if not any(isinstance(h, LoggingHandler) for h in root_logger.handlers):
+        otel_handler = LoggingHandler(level=logging.INFO, logger_provider=log_provider)
+        root_logger.addHandler(otel_handler)
 
-    # Inject trace_id and span_id into every Python log record's format string
+    # Ensure uvicorn access logs ("GET /api/... 200 OK") propagate to root logger so they reach Loki
+    for u_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        logging.getLogger(u_name).propagate = True
+
+    # Injects trace_id and span_id into every Python log record format string
     LoggingInstrumentor().instrument(set_logging_format=True)
-    logger.info("OTel LoggerProvider configured → Loki via OTLP")
+    print(f"[OTel] ✓ LoggerProvider target → {log_exporter._endpoint}")
 
     # ── Auto-Instrumentation ──────────────────────────────────────────────────
 
-    # FastAPI: creates a root span for every HTTP request with method, route,
-    # status code, and duration. Health check and root are excluded to reduce noise.
+    # FastAPI: root span per HTTP request — method, route, status, duration.
+    # Exclude only root '/' to reduce noise, allow '/health' so testing endpoints work.
     FastAPIInstrumentor.instrument_app(
         app,
-        excluded_urls="^/$,^/health$",
+        excluded_urls="^/$",
         tracer_provider=tracer_provider,
         meter_provider=meter_provider,
     )
 
-    # asyncpg: wraps every database query with a child span showing the SQL
-    # statement, table name, and duration. Critical for spotting Neon cold starts
-    # and slow credit-check queries.
+    # asyncpg: child span per DB query showing SQL statement and duration.
+    # Critical for spotting Neon cold starts and slow credit-check queries.
     AsyncPGInstrumentor().instrument(tracer_provider=tracer_provider)
 
-    # httpx: wraps every outbound HTTP call. This is the single most valuable
-    # instrumentation — it captures the Azure AI Foundry call duration as a span,
-    # showing exactly how much of /generate time is spent waiting for Azure.
+    # httpx: child span per outbound HTTP call.
+    # This captures Azure AI Foundry call duration — showing exactly
+    # how much of /generate time is spent waiting for the model.
     HTTPXClientInstrumentor().instrument(tracer_provider=tracer_provider)
 
-    logger.info(
-        "OTel auto-instrumentation active: FastAPI, asyncpg, httpx, logging"
-    )
+    print("[OTel] ✓ Auto-instrumentation active: FastAPI, asyncpg, httpx, logging")
+
+    # ── Startup verification span ──────────────────────────────────────────────
+    # Emits an initial span so Grafana Cloud receives live data on boot.
+    # Exported asynchronously by BatchSpanProcessor without blocking startup.
+    try:
+        tracer = trace.get_tracer("instaxoom.startup", tracer_provider=tracer_provider)
+        with tracer.start_as_current_span("app.startup") as span:
+            span.set_attribute("service.name", "instaxoom-backend")
+            span.set_attribute("service.status", "ready")
+            span.set_attribute("environment", settings.ENVIRONMENT)
+    except Exception as e:
+        logger.warning(f"[OTel] Failed to record initial startup trace: {e}")
