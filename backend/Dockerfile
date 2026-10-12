@@ -20,6 +20,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
+ARG APP_VERSION=1.0.0
+ARG COMMIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
+ENV APP_VERSION=${APP_VERSION} \
+    COMMIT_SHA=${COMMIT_SHA} \
+    BUILD_TIME=${BUILD_TIME}
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
