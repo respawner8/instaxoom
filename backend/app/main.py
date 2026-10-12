@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -11,6 +12,7 @@ from app.api.admin import router as admin_router
 from app.api.telemetry import router as telemetry_router
 
 logger = logging.getLogger(__name__)
+SERVER_START_TIME = datetime.now(timezone.utc)
 
 
 @asynccontextmanager
@@ -30,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="1.0.0",
+    version=settings.APP_VERSION,
     description="Fullstack AI Image Generation for Instagram Trends",
     lifespan=lifespan,
 )
@@ -58,10 +60,28 @@ async def root():
         "service": settings.PROJECT_NAME,
         "status": "online",
         "environment": settings.ENVIRONMENT,
+        "version": settings.APP_VERSION,
+        "commit_sha": settings.COMMIT_SHA,
+        "build_time": settings.BUILD_TIME,
     }
 
 
 @app.get("/health")
+@app.get("/api/status")
 async def health():
-    return {"status": "healthy"}
+    now = datetime.now(timezone.utc)
+    uptime_seconds = round((now - SERVER_START_TIME).total_seconds(), 2)
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "environment": settings.ENVIRONMENT,
+        "version": settings.APP_VERSION,
+        "commit_sha": settings.COMMIT_SHA,
+        "build_time": settings.BUILD_TIME,
+        "started_at": SERVER_START_TIME.isoformat(),
+        "checked_at": now.isoformat(),
+        "uptime_seconds": uptime_seconds,
+        "engine": settings.ENGINE,
+        "telemetry_enabled": bool(settings.OTEL_EXPORTER_OTLP_ENDPOINT),
+    }
 

@@ -6,6 +6,9 @@ from pydantic import Field
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     PROJECT_NAME: str = "instaXoom"
+    APP_VERSION: str = "1.0.0"
+    COMMIT_SHA: str = "local"
+    BUILD_TIME: str = "unknown"
     SECRET_KEY: str = "change-this-to-a-secure-random-secret-key-in-production"
 
     # OpenTelemetry — Grafana Cloud OTLP export

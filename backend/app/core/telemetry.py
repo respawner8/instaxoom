@@ -79,7 +79,7 @@ def configure_telemetry(app) -> None:
     resource = Resource.create(
         {
             "service.name": "instaxoom-backend",
-            "service.version": "1.0.0",
+            "service.version": settings.APP_VERSION,
             "deployment.environment": settings.ENVIRONMENT,
         }
     )
