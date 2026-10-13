@@ -53,12 +53,19 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW_SECONDS: int = 86400
 
     # Storage
-    STORAGE_PROVIDER: str = "local"
+    STORAGE_PROVIDER: Literal["local", "azure_blob", "s3"] = "local"
     STORAGE_ENDPOINT: str = "http://storage:9000"
     STORAGE_ACCESS_KEY: str = "minioadmin"
     STORAGE_SECRET_KEY: str = "minioadmin"
     STORAGE_BUCKET_NAME: str = "instaxoom-images"
     STORAGE_PUBLIC_URL: str = "http://localhost:9000/instaxoom-images"
+
+    # Azure Blob Storage
+    AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
+    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None
+    AZURE_STORAGE_ACCOUNT_KEY: Optional[str] = None
+    AZURE_STORAGE_CONTAINER_NAME: str = "instaxoom-images"
+    AZURE_STORAGE_CUSTOM_DOMAIN: Optional[str] = None
 
     # ComfyUI
     COMFYUI_HOST: str = "inference"

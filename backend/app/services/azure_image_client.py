@@ -13,6 +13,7 @@ from opentelemetry.trace import Status, StatusCode
 
 from app.core.config import settings
 from app.core.app_metrics import azure_duration_histogram, azure_queue_wait_histogram
+from app.services.storage_service import storage_service
 
 tracer = trace.get_tracer("instaxoom.azure")
 
@@ -162,22 +163,22 @@ class AzureImageClient:
         photo_bytes: bytes,
         prompt: str,
         size: str,
-        output_filepath: str,
-    ) -> bool:
+        output_filename: str,
+    ) -> Optional[str]:
         start_time = time.time()
         with tracer.start_as_current_span("azure.gpt_image_flare") as span:
             span.set_attribute("azure.deployment", deployment_name)
             span.set_attribute("azure.size", size)
             span.set_attribute("azure.prompt_length", len(prompt))
             try:
-                res = await self._do_execute_attempt(
-                    base_url, deployment_name, photo_bytes, prompt, size, output_filepath
+                uploaded_url = await self._do_execute_attempt(
+                    base_url, deployment_name, photo_bytes, prompt, size, output_filename
                 )
                 duration = time.time() - start_time
                 azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "success"})
                 span.set_attribute("azure.duration_seconds", duration)
                 span.set_status(Status(StatusCode.OK))
-                return res
+                return uploaded_url
             except Exception as exc:
                 duration = time.time() - start_time
                 azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "error"})
@@ -193,11 +194,11 @@ class AzureImageClient:
         photo_bytes: bytes,
         prompt: str,
         size: str,
-        output_filepath: str,
-    ) -> bool:
+        output_filename: str,
+    ) -> Optional[str]:
         """
         Executes a single API call to Azure AI Foundry via images.edit (or fallback to images.generate).
-        Writes output to output_filepath and returns True on success.
+        Uploads output via storage_service (Azure Blob or local fallback) and returns the public URL.
         Raises HTTPException or Exception on failure.
         """
         edit_prompt = (
@@ -269,9 +270,7 @@ class AzureImageClient:
                             image_bytes = dl_resp.content
 
                 if image_bytes:
-                    async with aiofiles.open(output_filepath, "wb") as f:
-                        await f.write(image_bytes)
-                    return True
+                    return await storage_service.upload_image(image_bytes, output_filename)
 
         except HTTPException:
             raise
@@ -303,16 +302,12 @@ class AzureImageClient:
                 first = data[0]
                 if "b64_json" in first and first["b64_json"]:
                     img_bytes = base64.b64decode(first["b64_json"])
-                    async with aiofiles.open(output_filepath, "wb") as f:
-                        await f.write(img_bytes)
-                    return True
+                    return await storage_service.upload_image(img_bytes, output_filename)
 
                 elif "url" in first and first["url"]:
                     dl_resp = await http_client.get(first["url"])
                     if dl_resp.status_code == 200:
-                        async with aiofiles.open(output_filepath, "wb") as f:
-                            await f.write(dl_resp.content)
-                        return True
+                        return await storage_service.upload_image(dl_resp.content, output_filename)
 
             if response.status_code == 429:
                 raise HTTPException(
@@ -339,12 +334,13 @@ class AzureImageClient:
         max_retries: int = 3,
         job_id: Optional[str] = None,
         on_status: Optional[Callable[[Dict[str, Any]], Any]] = None,
-    ) -> str:
+    ) -> tuple[str, str]:
         """
         Enters the sequential queue, waits until at least 30s have passed since the last
         request started (or starts immediately if the last request took >=30s).
         Emits live status events (queued, spacing_wait, processing, retrying, completed).
         If the model returns a failure or is throttled, waits 30s and retries.
+        Returns (output_filename, public_image_url).
         """
         if not settings.AZURE_AI_API_KEY:
             raise HTTPException(
@@ -352,10 +348,8 @@ class AzureImageClient:
                 detail="AZURE_AI_API_KEY is not configured on the server. Please check your environment variables.",
             )
 
-        os.makedirs(OUTPUTS_DIR, exist_ok=True)
         unique_id = job_id or uuid.uuid4().hex[:12]
         output_filename = f"instaxoom_azure_{unique_id}.png"
-        output_filepath = os.path.join(OUTPUTS_DIR, output_filename)
 
         base_url = self._normalize_base_url(settings.AZURE_AI_ENDPOINT)
         deployment_name = settings.AZURE_AI_DEPLOYMENT
@@ -442,17 +436,17 @@ class AzureImageClient:
                             except Exception as cb_err:
                                 print(f"[Azure Queue] on_status error: {cb_err}")
 
-                        success = await self._execute_single_attempt(
+                        uploaded_url = await self._execute_single_attempt(
                             base_url=base_url,
                             deployment_name=deployment_name,
                             photo_bytes=photo_bytes,
                             prompt=prompt,
                             size=size,
-                            output_filepath=output_filepath,
+                            output_filename=output_filename,
                         )
-                        if success:
-                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}!")
-                            return output_filename
+                        if uploaded_url:
+                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}! URL: {uploaded_url}")
+                            return output_filename, uploaded_url
 
                     except HTTPException as http_exc:
                         last_error = http_exc

@@ -34,6 +34,8 @@ class User(Base):
     credit = relationship("UserCredit", back_populates="user", uselist=False, cascade="all, delete-orphan")
     # 1-to-many relationship with transactions
     transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
+    # 1-to-many relationship with generated portraits
+    generations = relationship("Generation", back_populates="user", cascade="all, delete-orphan", order_by="desc(Generation.created_at)")
 
 
 class UserCredit(Base):
@@ -72,3 +74,22 @@ class CreditTransaction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="transactions")
+
+
+class Generation(Base):
+    __tablename__ = "generations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    job_id = Column(String(64), unique=True, index=True, nullable=False)
+    theme_id = Column(String(100), index=True, nullable=False)
+    theme_title = Column(String(255), nullable=True)
+    prompt = Column(Text, nullable=True)
+    aspect_ratio = Column(String(16), default="4:5", nullable=False)
+    engine = Column(String(32), default="azure", nullable=False)
+    image_url = Column(Text, nullable=False)
+    storage_provider = Column(String(32), default="azure_blob", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, nullable=False)
+
+    user = relationship("User", back_populates="generations")
+
