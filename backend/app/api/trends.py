@@ -10,14 +10,14 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header, Request, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, desc
 
 from app.services.comfy_client import comfy_client
 from app.services.azure_image_client import azure_image_client
 from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_user_optional
-from app.models.user import User, UserCredit, CreditTransaction
+from app.models.user import User, UserCredit, CreditTransaction, Generation
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 from app.core.app_metrics import (
@@ -446,7 +446,7 @@ async def generate_trend_image(
 
     generation_attempts.add(1, {"engine": active_engine, "theme_id": selected_theme["id"]})
 
-    async def deduct_user_credit(job_id_val: str, theme_id_val: str) -> int:
+    async def deduct_user_credit(job_id_val: str, theme_id_val: str, image_url_val: str = "") -> int:
         with tracer.start_as_current_span("credit.deduct") as span:
             span.set_attribute("user.id", str(current_user.id))
             span.set_attribute("credit.job_id", job_id_val)
@@ -474,6 +474,23 @@ async def generate_trend_image(
                     meta_data={"job_id": job_id_val, "theme_id": theme_id_val},
                 )
                 session.add(tx)
+
+                # Persist image generation record for user's gallery
+                if image_url_val:
+                    storage_prov = "azure_blob" if image_url_val.startswith("http") else "local"
+                    gen_rec = Generation(
+                        user_id=current_user.id,
+                        job_id=job_id_val,
+                        theme_id=theme_id_val,
+                        theme_title=selected_theme.get("title", "Portrait"),
+                        prompt=final_prompt,
+                        aspect_ratio="4:5",
+                        engine=active_engine,
+                        image_url=image_url_val,
+                        storage_provider=storage_prov,
+                    )
+                    session.add(gen_rec)
+
                 await session.commit()
                 credit_deductions.add(1, {"user_role": current_user.role, "theme_id": theme_id_val})
                 span.set_status(Status(StatusCode.OK))
@@ -520,17 +537,18 @@ async def generate_trend_image(
                         span.set_attribute("gen.theme_id", selected_theme["id"])
                         span.set_attribute("gen.aspect_ratio", aspect_ratio)
                         filename = None
+                        image_url = None
                         try:
-                            filename = await azure_image_client.generate_portrait(
+                            filename, image_url = await azure_image_client.generate_portrait(
                                 photo_bytes=photo_bytes,
                                 prompt=final_prompt,
                                 aspect_ratio=aspect_ratio,
                                 job_id=job_id,
                                 on_status=on_status_update,
                             )
-                            # Generation succeeded -> Deduct credit
+                            # Generation succeeded -> Deduct credit & save to gallery
                             try:
-                                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url)
                             except Exception:
                                 revenue_integrity_anomalies.add(1, {
                                     "anomaly_type": "gen_success_no_deduct",
@@ -552,7 +570,7 @@ async def generate_trend_image(
                                 "aspect_ratio": "4:5",
                                 "engine_used": "azure_gpt_image_2.5_flare",
                                 "photos_received": 1,
-                                "image_url": f"/api/trends/outputs/{filename}",
+                                "image_url": image_url,
                                 "queue_active": True,
                                 "remaining_credits": remaining_credits,
                                 "quota": {
@@ -614,15 +632,16 @@ async def generate_trend_image(
             span.set_attribute("gen.theme_id", selected_theme["id"])
             span.set_attribute("gen.aspect_ratio", aspect_ratio)
             output_filename = None
+            image_url = None
             try:
-                output_filename = await azure_image_client.generate_portrait(
+                output_filename, image_url = await azure_image_client.generate_portrait(
                     photo_bytes=photo_bytes,
                     prompt=final_prompt,
                     aspect_ratio=aspect_ratio,
                     job_id=job_id,
                 )
                 try:
-                    remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+                    remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url)
                 except Exception:
                     revenue_integrity_anomalies.add(1, {
                         "anomaly_type": "gen_success_no_deduct",
@@ -655,7 +674,7 @@ async def generate_trend_image(
             "aspect_ratio": "4:5",
             "engine_used": "azure_gpt_image_2.5_flare",
             "photos_received": 1,
-            "image_url": f"/api/trends/outputs/{output_filename}",
+            "image_url": image_url,
             "queue_active": True,
             "remaining_credits": remaining_credits,
             "quota": {
@@ -807,6 +826,43 @@ async def generate_trend_image(
             status_code=500,
             detail=f"Image generation failed: {str(exc)}"
         )
+
+
+@router.get("/my-generations")
+async def get_my_generations(
+    current_user: User = Depends(get_current_user),
+    limit: int = 50,
+):
+    """
+    Retrieves previously generated portraits for the authenticated user,
+    ordered by newest first.
+    """
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(Generation)
+            .where(Generation.user_id == current_user.id)
+            .order_by(desc(Generation.created_at))
+            .limit(min(limit, 100))
+        )
+        res = await session.execute(stmt)
+        generations = res.scalars().all()
+        return {
+            "generations": [
+                {
+                    "id": str(g.id),
+                    "job_id": g.job_id,
+                    "theme_id": g.theme_id,
+                    "theme_title": g.theme_title,
+                    "prompt": g.prompt,
+                    "aspect_ratio": g.aspect_ratio,
+                    "engine": g.engine,
+                    "image_url": g.image_url,
+                    "storage_provider": g.storage_provider,
+                    "created_at": g.created_at.isoformat() if g.created_at else None,
+                }
+                for g in generations
+            ]
+        }
 
 
 @router.api_route("/outputs/{filename}", methods=["GET", "HEAD"])

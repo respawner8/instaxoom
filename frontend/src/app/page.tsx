@@ -29,8 +29,10 @@ import {
   Shield,
   Coins,
   LogOut,
+  Image as ImageIcon,
 } from "lucide-react";
 import { autoCropAndDetectFace, ProcessedPhotoResult } from "@/lib/faceCropper";
+import MyImagesModal, { GenerationItem } from "@/components/MyImagesModal";
 
 
 interface Theme {
@@ -152,8 +154,42 @@ export default function Home() {
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState<boolean>(false);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
 
+  // My Images Gallery State
+  const [isMyImagesOpen, setIsMyImagesOpen] = useState<boolean>(false);
+  const [myGenerations, setMyGenerations] = useState<GenerationItem[]>([]);
+  const [isLoadingGenerations, setIsLoadingGenerations] = useState<boolean>(false);
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  const fetchMyGenerations = async () => {
+    if (!token) return;
+    setIsLoadingGenerations(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/trends/my-generations`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyGenerations(data.generations || []);
+      }
+    } catch (err) {
+      console.log("Failed to load generations gallery:", err);
+    } finally {
+      setIsLoadingGenerations(false);
+    }
+  };
+
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    if (token) {
+      fetchMyGenerations();
+    } else {
+      setMyGenerations([]);
+    }
+  }, [token]);
+
+  useEffect(() => {
     fetch(`${apiUrl}/api/trends/today`)
       .then((res) => res.json())
       .then((data) => {
@@ -411,6 +447,23 @@ export default function Home() {
                       ? event.image_url
                       : `${apiUrl}${event.image_url}`;
                     setGeneratedImage(fullUrl);
+
+                    // Prepend to My Images gallery in real time
+                    setMyGenerations((prev) => [
+                      {
+                        id: event.job_id || String(Date.now()),
+                        job_id: event.job_id || String(Date.now()),
+                        theme_id: selectedTheme.id,
+                        theme_title: selectedTheme.title,
+                        prompt: customPrompt,
+                        aspect_ratio: "4:5",
+                        engine: activeEngine,
+                        image_url: fullUrl,
+                        storage_provider: fullUrl.startsWith("http") ? "azure_blob" : "local",
+                        created_at: new Date().toISOString(),
+                      },
+                      ...prev,
+                    ]);
                   } else if (event.type === "error") {
                     clearInterval(interval);
                     setErrorMessage(event.detail || "Image generation failed.");
@@ -438,6 +491,23 @@ export default function Home() {
             ? data.image_url
             : `${apiUrl}${data.image_url}`;
           setGeneratedImage(fullUrl);
+
+          // Prepend to My Images gallery in real time
+          setMyGenerations((prev) => [
+            {
+              id: data.job_id || String(Date.now()),
+              job_id: data.job_id || String(Date.now()),
+              theme_id: selectedTheme.id,
+              theme_title: selectedTheme.title,
+              prompt: customPrompt,
+              aspect_ratio: "4:5",
+              engine: activeEngine,
+              image_url: fullUrl,
+              storage_provider: fullUrl.startsWith("http") ? "azure_blob" : "local",
+              created_at: new Date().toISOString(),
+            },
+            ...prev,
+          ]);
         } else {
           if (res.status === 401) {
             setErrorMessage("Session expired. Please sign in with Google again.");
@@ -628,7 +698,22 @@ export default function Home() {
           </div>
 
           {user ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* My Images Gallery Button */}
+              <button
+                onClick={() => setIsMyImagesOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:bg-purple-500/25 transition text-xs font-bold shadow-sm"
+                title="View your saved portrait generations"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                <span>My Images</span>
+                {myGenerations.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-purple-500/30 text-[10px] text-purple-200">
+                    {myGenerations.length}
+                  </span>
+                )}
+              </button>
+
               {/* Live Credit Badge */}
               <div
                 className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm"
@@ -1184,6 +1269,16 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* My Images Gallery Modal */}
+      <MyImagesModal
+        isOpen={isMyImagesOpen}
+        onClose={() => setIsMyImagesOpen(false)}
+        generations={myGenerations}
+        isLoading={isLoadingGenerations}
+        onRefresh={fetchMyGenerations}
+        apiUrl={apiUrl}
+      />
     </main>
   );
 }

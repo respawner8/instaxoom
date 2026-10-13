@@ -8,13 +8,49 @@ This guide explains how to deploy the **instaXoom** FastAPI backend to **Azure C
 
 - **Backend Gateway:** FastAPI containerized service hosted on **Azure Container Apps** (Consumption tier) with **Scale to Zero** (`--min-replicas 0`). Idle infrastructure cost is **$0.00/month**.
 - **AI Inference Engine:** `gpt-image-2.5-flare` hosted on **Microsoft Azure AI Foundry** (East US 2).
-- **Database:** **Neon Serverless PostgreSQL** handling user persistence, credits, pending invitations, and audit logs.
+- **Persistent Image Storage:** **Azure Blob Storage** container (`instaxoom-images`) with immutable CDN cache headers.
+- **Database:** **Neon Serverless PostgreSQL** handling user persistence, credits, pending invitations, generations gallery, and audit logs.
 - **Authentication:** **Google Identity Services (OAuth 2.0)** with JWT access token generation and role authorization.
 - **Frontend:** Next.js 15 hosted on **Vercel** with `@react-oauth/google`.
 
 ---
 
-## 2. One-Command Local Terminal Deployment (`./scripts/deploy-backend.sh`)
+## 2. Azure Blob Storage Setup (One-Time)
+
+To ensure generated images survive scale-to-zero container recycles and load at maximum CDN speed:
+
+```bash
+# 1. Create a Standard Azure Storage Account in your existing resource group
+az storage account create \
+  --name stinstaxoomprod \
+  --resource-group rg-instaxoom-prod \
+  --location eastus2 \
+  --sku Standard_LRS \
+  --allow-blob-public-access true
+
+# 2. Create the public container 'instaxoom-images'
+az storage container create \
+  --name instaxoom-images \
+  --account-name stinstaxoomprod \
+  --public-access blob
+
+# 3. Retrieve the Connection String
+az storage account show-connection-string \
+  --name stinstaxoomprod \
+  --resource-group rg-instaxoom-prod \
+  --output tsv
+```
+
+Copy the connection string and add it to your local `backend/.env`:
+```env
+STORAGE_PROVIDER=azure_blob
+AZURE_STORAGE_CONTAINER_NAME=instaxoom-images
+AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=stinstaxoomprod;AccountKey=...;EndpointSuffix=core.windows.net"
+```
+
+---
+
+## 3. One-Command Local Terminal Deployment (`./scripts/deploy-backend.sh`)
 
 You can deploy directly from your local terminal using your local `backend/.env` file. The script automatically parses all variables from `backend/.env`, stamps the Git `COMMIT_SHA` and UTC `BUILD_TIME`, builds the image remotely in Azure Container Registry (`az acr build`), updates the Azure Container App (`instaxoom-backend`), and verifies the live `/health` endpoint.
 
@@ -36,7 +72,7 @@ az login
 
 ---
 
-## 3. Manual Azure Cloud Shell Deployment Workflow
+## 4. Manual Azure Cloud Shell Deployment Workflow
 
 Azure Cloud Shell allows you to build container images and manage deployments directly from your browser without requiring a local Docker daemon or Azure CLI installation.
 

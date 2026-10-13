@@ -209,7 +209,7 @@ if [ "$DRY_RUN" = true ]; then
   for pair in "${ENV_PAIRS[@]}"; do
     key="${pair%%=*}"
     # Mask sensitive keys
-    if [[ "$key" =~ (KEY|SECRET|PASSWORD|HEADERS|DATABASE_URL) ]]; then
+    if [[ "$key" =~ (KEY|SECRET|PASSWORD|HEADERS|DATABASE_URL|CONNECTION_STRING) ]]; then
       echo "   $key=******** [PROTECTED]"
     else
       echo "   $pair"
