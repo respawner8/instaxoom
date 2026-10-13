@@ -73,6 +73,22 @@ class StorageService:
             except Exception as create_err:
                 logger.debug(f"[Storage] Container check/create notice: {create_err}")
 
+            # Ensure CORS rules allow web fetch & cache preflight for 24 hours (86400s)
+            try:
+                from azure.storage.blob import CorsRule
+
+                cors_rule = CorsRule(
+                    allowed_origins=["*"],
+                    allowed_methods=["GET", "HEAD", "OPTIONS"],
+                    allowed_headers=["*"],
+                    exposed_headers=["*"],
+                    max_age_in_seconds=86400,
+                )
+                self._blob_service_client.set_service_properties(cors=[cors_rule])
+                logger.info("[Storage] Configured Azure Blob CORS rules with 24h preflight cache (max-age=86400).")
+            except Exception as cors_err:
+                logger.debug(f"[Storage] CORS auto-configuration notice: {cors_err}")
+
             self._initialized = True
             logger.info(f"[Storage] Azure Blob Storage initialized for container '{container_name}'.")
             return self._container_client
