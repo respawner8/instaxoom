@@ -446,7 +446,12 @@ async def generate_trend_image(
 
     generation_attempts.add(1, {"engine": active_engine, "theme_id": selected_theme["id"]})
 
-    async def deduct_user_credit(job_id_val: str, theme_id_val: str, image_url_val: str = "") -> int:
+    async def deduct_user_credit(
+        job_id_val: str,
+        theme_id_val: str,
+        image_url_val: str = "",
+        thumbnail_url_val: Optional[str] = None,
+    ) -> int:
         with tracer.start_as_current_span("credit.deduct") as span:
             span.set_attribute("user.id", str(current_user.id))
             span.set_attribute("credit.job_id", job_id_val)
@@ -487,6 +492,7 @@ async def generate_trend_image(
                         aspect_ratio="4:5",
                         engine=active_engine,
                         image_url=image_url_val,
+                        thumbnail_url=thumbnail_url_val,
                         storage_provider=storage_prov,
                     )
                     session.add(gen_rec)
@@ -538,8 +544,9 @@ async def generate_trend_image(
                         span.set_attribute("gen.aspect_ratio", aspect_ratio)
                         filename = None
                         image_url = None
+                        thumbnail_url = None
                         try:
-                            filename, image_url = await azure_image_client.generate_portrait(
+                            filename, image_url, thumbnail_url = await azure_image_client.generate_portrait(
                                 photo_bytes=photo_bytes,
                                 prompt=final_prompt,
                                 aspect_ratio=aspect_ratio,
@@ -548,7 +555,12 @@ async def generate_trend_image(
                             )
                             # Generation succeeded -> Deduct credit & save to gallery
                             try:
-                                remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url)
+                                remaining_credits = await deduct_user_credit(
+                                    job_id_val=job_id,
+                                    theme_id_val=selected_theme["id"],
+                                    image_url_val=image_url,
+                                    thumbnail_url_val=thumbnail_url,
+                                )
                             except Exception:
                                 revenue_integrity_anomalies.add(1, {
                                     "anomaly_type": "gen_success_no_deduct",
@@ -571,6 +583,7 @@ async def generate_trend_image(
                                 "engine_used": "azure_gpt_image_2.5_flare",
                                 "photos_received": 1,
                                 "image_url": image_url,
+                                "thumbnail_url": thumbnail_url,
                                 "queue_active": True,
                                 "remaining_credits": remaining_credits,
                                 "quota": {
@@ -633,15 +646,21 @@ async def generate_trend_image(
             span.set_attribute("gen.aspect_ratio", aspect_ratio)
             output_filename = None
             image_url = None
+            thumbnail_url = None
             try:
-                output_filename, image_url = await azure_image_client.generate_portrait(
+                output_filename, image_url, thumbnail_url = await azure_image_client.generate_portrait(
                     photo_bytes=photo_bytes,
                     prompt=final_prompt,
                     aspect_ratio=aspect_ratio,
                     job_id=job_id,
                 )
                 try:
-                    remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url)
+                    remaining_credits = await deduct_user_credit(
+                        job_id_val=job_id,
+                        theme_id_val=selected_theme["id"],
+                        image_url_val=image_url,
+                        thumbnail_url_val=thumbnail_url,
+                    )
                 except Exception:
                     revenue_integrity_anomalies.add(1, {
                         "anomaly_type": "gen_success_no_deduct",
@@ -675,6 +694,7 @@ async def generate_trend_image(
             "engine_used": "azure_gpt_image_2.5_flare",
             "photos_received": 1,
             "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
             "queue_active": True,
             "remaining_credits": remaining_credits,
             "quota": {
@@ -857,6 +877,7 @@ async def get_my_generations(
                     "aspect_ratio": g.aspect_ratio,
                     "engine": g.engine,
                     "image_url": g.image_url,
+                    "thumbnail_url": g.thumbnail_url or g.image_url,
                     "storage_provider": g.storage_provider,
                     "created_at": g.created_at.isoformat() if g.created_at else None,
                 }
@@ -869,13 +890,32 @@ async def get_my_generations(
 async def get_generated_image(filename: str):
     """
     Serves generated images from the shared outputs volume or proxies from ComfyUI.
+    Automatically generates WebP thumbnails on demand if a thumbnail is requested and master exists.
     """
+    import mimetypes
     safe_filename = os.path.basename(filename)
     filepath = os.path.join(OUTPUTS_DIR, safe_filename)
 
+    # On-demand thumbnail generation for local disk if requested thumbnail doesn't exist yet
+    if not os.path.isfile(filepath) and safe_filename.endswith("_thumb.webp"):
+        master_name = safe_filename.replace("_thumb.webp", ".png")
+        master_path = os.path.join(OUTPUTS_DIR, master_name)
+        if os.path.isfile(master_path):
+            try:
+                from app.services.storage_service import create_webp_thumbnail
+                async with aiofiles.open(master_path, "rb") as f:
+                    master_bytes = await f.read()
+                thumb_bytes = create_webp_thumbnail(master_bytes)
+                async with aiofiles.open(filepath, "wb") as f:
+                    await f.write(thumb_bytes)
+            except Exception as e:
+                print(f"[Thumbnail Error] On-demand thumbnail generation failed: {e}")
+
     # Direct file serving if available in mounted volume
     if os.path.isfile(filepath):
-        return FileResponse(filepath, media_type="image/png")
+        guessed_type, _ = mimetypes.guess_type(filepath)
+        media_type = guessed_type or "image/png"
+        return FileResponse(filepath, media_type=media_type)
 
     # Fallback: proxy from ComfyUI /view endpoint
     comfy_view_url = f"{settings.COMFYUI_URL}/view?filename={safe_filename}&type=output"
@@ -883,7 +923,8 @@ async def get_generated_image(filename: str):
         try:
             resp = await client.get(comfy_view_url)
             if resp.status_code == 200:
-                return Response(content=resp.content, media_type="image/png")
+                guessed_type, _ = mimetypes.guess_type(safe_filename)
+                return Response(content=resp.content, media_type=guessed_type or "image/png")
         except Exception as err:
             print(f"[Outputs Proxy Error] Failed to proxy {safe_filename} from ComfyUI: {err}")
 

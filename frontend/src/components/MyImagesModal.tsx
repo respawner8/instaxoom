@@ -23,6 +23,7 @@ export interface GenerationItem {
   aspect_ratio: string;
   engine: string;
   image_url: string;
+  thumbnail_url?: string;
   storage_provider: string;
   created_at: string | null;
 }
@@ -337,17 +338,17 @@ export default function MyImagesModal({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {generations.map((item) => {
-                  const fullUrl = getFullImageUrl(item.image_url);
+                  const thumbUrl = getFullImageUrl(item.thumbnail_url || item.image_url);
                   return (
                     <div
                       key={item.id}
                       onClick={() => setSelectedImage(item)}
                       className="group relative aspect-[4/5] rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 hover:border-purple-500/50 transition cursor-pointer shadow-md"
                     >
-                      {/* Portrait Image */}
+                      {/* Portrait Image (Lightweight WebP Thumbnail) */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={fullUrl}
+                        src={thumbUrl}
                         alt={item.theme_title || "Portrait"}
                         loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"

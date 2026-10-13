@@ -88,6 +88,7 @@ class Generation(Base):
     aspect_ratio = Column(String(16), default="4:5", nullable=False)
     engine = Column(String(32), default="azure", nullable=False)
     image_url = Column(Text, nullable=False)
+    thumbnail_url = Column(Text, nullable=True)
     storage_provider = Column(String(32), default="azure_blob", nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, nullable=False)
 

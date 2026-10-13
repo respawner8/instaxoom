@@ -58,3 +58,9 @@ async def init_db():
         # Import models so Base has all definitions
         import app.models.user  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
+        # Migrate existing tables: add thumbnail_url to generations if missing
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE generations ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
+        except Exception:
+            pass

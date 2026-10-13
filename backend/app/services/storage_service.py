@@ -1,13 +1,29 @@
 import asyncio
+import io
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 import aiofiles
+from PIL import Image
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 OUTPUTS_DIR = os.path.join(os.getcwd(), "outputs")
+
+
+def create_webp_thumbnail(image_bytes: bytes, max_dim: int = 400, quality: int = 85) -> bytes:
+    """
+    Creates an optimized WebP thumbnail from image bytes.
+    The longest dimension will not exceed max_dim.
+    Quality 85 provides crisp visual quality at ~25-35 KB.
+    """
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        rgb_img = img.convert("RGB")
+        rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        out_buf = io.BytesIO()
+        rgb_img.save(out_buf, format="WEBP", quality=quality, method=4)
+        return out_buf.getvalue()
 
 
 class StorageService:
@@ -125,6 +141,29 @@ class StorageService:
 
         # 3. Fallback: return relative URL served by FastAPI
         return f"/api/trends/outputs/{filename}"
+
+    async def upload_portrait_with_thumbnail(
+        self,
+        image_bytes: bytes,
+        base_filename: str,
+    ) -> Tuple[str, str]:
+        """
+        Saves the master image in its original lossless format (e.g. PNG) and creates
+        a lightweight WebP thumbnail (max 400px, ~30KB) for high-performance gallery views.
+        Returns a tuple: (master_image_url, thumbnail_url).
+        """
+        name_root, _ = os.path.splitext(base_filename)
+        thumb_filename = f"{name_root}_thumb.webp"
+
+        # Generate thumbnail off the main event loop
+        thumb_bytes = await asyncio.to_thread(create_webp_thumbnail, image_bytes)
+
+        # Upload both in parallel
+        master_url, thumb_url = await asyncio.gather(
+            self.upload_image(image_bytes, base_filename, content_type="image/png"),
+            self.upload_image(thumb_bytes, thumb_filename, content_type="image/webp"),
+        )
+        return master_url, thumb_url
 
 
 # Global singleton instance

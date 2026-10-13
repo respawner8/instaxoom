@@ -446,6 +446,9 @@ export default function Home() {
                     const fullUrl = event.image_url.startsWith("http")
                       ? event.image_url
                       : `${apiUrl}${event.image_url}`;
+                    const thumbUrl = event.thumbnail_url
+                      ? (event.thumbnail_url.startsWith("http") ? event.thumbnail_url : `${apiUrl}${event.thumbnail_url}`)
+                      : fullUrl;
                     setGeneratedImage(fullUrl);
 
                     // Prepend to My Images gallery in real time
@@ -459,6 +462,7 @@ export default function Home() {
                         aspect_ratio: "4:5",
                         engine: activeEngine,
                         image_url: fullUrl,
+                        thumbnail_url: thumbUrl,
                         storage_provider: fullUrl.startsWith("http") ? "azure_blob" : "local",
                         created_at: new Date().toISOString(),
                       },
@@ -490,6 +494,9 @@ export default function Home() {
           const fullUrl = data.image_url.startsWith("http")
             ? data.image_url
             : `${apiUrl}${data.image_url}`;
+          const thumbUrl = data.thumbnail_url
+            ? (data.thumbnail_url.startsWith("http") ? data.thumbnail_url : `${apiUrl}${data.thumbnail_url}`)
+            : fullUrl;
           setGeneratedImage(fullUrl);
 
           // Prepend to My Images gallery in real time
@@ -503,6 +510,7 @@ export default function Home() {
               aspect_ratio: "4:5",
               engine: activeEngine,
               image_url: fullUrl,
+              thumbnail_url: thumbUrl,
               storage_provider: fullUrl.startsWith("http") ? "azure_blob" : "local",
               created_at: new Date().toISOString(),
             },

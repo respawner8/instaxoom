@@ -164,21 +164,21 @@ class AzureImageClient:
         prompt: str,
         size: str,
         output_filename: str,
-    ) -> Optional[str]:
+    ) -> Optional[tuple[str, str]]:
         start_time = time.time()
         with tracer.start_as_current_span("azure.gpt_image_flare") as span:
             span.set_attribute("azure.deployment", deployment_name)
             span.set_attribute("azure.size", size)
             span.set_attribute("azure.prompt_length", len(prompt))
             try:
-                uploaded_url = await self._do_execute_attempt(
+                gen_result = await self._do_execute_attempt(
                     base_url, deployment_name, photo_bytes, prompt, size, output_filename
                 )
                 duration = time.time() - start_time
                 azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "success"})
                 span.set_attribute("azure.duration_seconds", duration)
                 span.set_status(Status(StatusCode.OK))
-                return uploaded_url
+                return gen_result
             except Exception as exc:
                 duration = time.time() - start_time
                 azure_duration_histogram.record(duration, {"deployment": deployment_name, "status": "error"})
@@ -195,10 +195,11 @@ class AzureImageClient:
         prompt: str,
         size: str,
         output_filename: str,
-    ) -> Optional[str]:
+    ) -> Optional[tuple[str, str]]:
         """
         Executes a single API call to Azure AI Foundry via images.edit (or fallback to images.generate).
-        Uploads output via storage_service (Azure Blob or local fallback) and returns the public URL.
+        Uploads master lossless image and WebP thumbnail via storage_service (Azure Blob or local fallback).
+        Returns a tuple of (public_image_url, thumbnail_url).
         Raises HTTPException or Exception on failure.
         """
         edit_prompt = (
@@ -270,7 +271,7 @@ class AzureImageClient:
                             image_bytes = dl_resp.content
 
                 if image_bytes:
-                    return await storage_service.upload_image(image_bytes, output_filename)
+                    return await storage_service.upload_portrait_with_thumbnail(image_bytes, output_filename)
 
         except HTTPException:
             raise
@@ -302,12 +303,12 @@ class AzureImageClient:
                 first = data[0]
                 if "b64_json" in first and first["b64_json"]:
                     img_bytes = base64.b64decode(first["b64_json"])
-                    return await storage_service.upload_image(img_bytes, output_filename)
+                    return await storage_service.upload_portrait_with_thumbnail(img_bytes, output_filename)
 
                 elif "url" in first and first["url"]:
                     dl_resp = await http_client.get(first["url"])
                     if dl_resp.status_code == 200:
-                        return await storage_service.upload_image(dl_resp.content, output_filename)
+                        return await storage_service.upload_portrait_with_thumbnail(dl_resp.content, output_filename)
 
             if response.status_code == 429:
                 raise HTTPException(
@@ -334,13 +335,13 @@ class AzureImageClient:
         max_retries: int = 3,
         job_id: Optional[str] = None,
         on_status: Optional[Callable[[Dict[str, Any]], Any]] = None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         """
         Enters the sequential queue, waits until at least 30s have passed since the last
         request started (or starts immediately if the last request took >=30s).
         Emits live status events (queued, spacing_wait, processing, retrying, completed).
         If the model returns a failure or is throttled, waits 30s and retries.
-        Returns (output_filename, public_image_url).
+        Returns (output_filename, public_image_url, thumbnail_url).
         """
         if not settings.AZURE_AI_API_KEY:
             raise HTTPException(
@@ -404,7 +405,7 @@ class AzureImageClient:
                                     "wait_seconds": int(wait_time),
                                     "estimated_seconds": int(wait_time + self.ESTIMATED_GEN_DURATION),
                                     "message": f"Spacing requests for rate limit — Starting in {int(wait_time)}s...",
-                                })
+                                    })
                                 if asyncio.iscoroutine(res):
                                     await res
                             except Exception as cb_err:
@@ -436,7 +437,7 @@ class AzureImageClient:
                             except Exception as cb_err:
                                 print(f"[Azure Queue] on_status error: {cb_err}")
 
-                        uploaded_url = await self._execute_single_attempt(
+                        gen_result = await self._execute_single_attempt(
                             base_url=base_url,
                             deployment_name=deployment_name,
                             photo_bytes=photo_bytes,
@@ -444,9 +445,10 @@ class AzureImageClient:
                             size=size,
                             output_filename=output_filename,
                         )
-                        if uploaded_url:
-                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}! URL: {uploaded_url}")
-                            return output_filename, uploaded_url
+                        if gen_result:
+                            image_url, thumb_url = gen_result
+                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}! URL: {image_url}, Thumb: {thumb_url}")
+                            return output_filename, image_url, thumb_url
 
                     except HTTPException as http_exc:
                         last_error = http_exc
