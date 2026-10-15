@@ -12,6 +12,8 @@ import {
   Image as ImageIcon,
   Calendar,
   Check,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 
 export interface GenerationItem {
@@ -34,6 +36,7 @@ interface MyImagesModalProps {
   generations: GenerationItem[];
   isLoading: boolean;
   onRefresh: () => void;
+  onDelete?: (id: string) => Promise<void> | void;
   apiUrl: string;
 }
 
@@ -43,11 +46,24 @@ export default function MyImagesModal({
   generations,
   isLoading,
   onRefresh,
+  onDelete,
   apiUrl,
 }: MyImagesModalProps) {
   const [selectedImage, setSelectedImage] = useState<GenerationItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(new Set());
+
+  // Auto-reset delete confirmation after 4 seconds
+  useEffect(() => {
+    if (!confirmDeleteId) return;
+    const timer = setTimeout(() => {
+      setConfirmDeleteId(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [confirmDeleteId]);
 
   // Handle ESC key navigation
   useEffect(() => {
@@ -144,6 +160,30 @@ export default function MyImagesModal({
     }
   };
 
+  const handleDelete = async (item: GenerationItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    if (confirmDeleteId !== item.id) {
+      setConfirmDeleteId(item.id);
+      return;
+    }
+
+    setDeletingId(item.id);
+    try {
+      if (onDelete) {
+        await onDelete(item.id);
+      }
+      if (selectedImage?.id === item.id) {
+        setSelectedImage(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete generation:", err);
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
@@ -232,12 +272,43 @@ export default function MyImagesModal({
           <div className="flex-1 overflow-y-auto flex flex-col md:flex-row bg-[#0e0e12]">
             {/* Image Preview Area */}
             <div className="flex-1 bg-black/60 flex items-center justify-center p-4 sm:p-6 min-h-[350px] md:min-h-[500px]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={getFullImageUrl(selectedImage.image_url)}
-                alt={selectedImage.theme_title || "Portrait"}
-                className="max-h-[65vh] w-auto max-w-full object-contain rounded-xl shadow-2xl border border-neutral-800/60"
-              />
+              {failedImageIds.has(selectedImage.id) ? (
+                <div className="flex flex-col items-center justify-center text-center p-6 max-w-sm rounded-2xl bg-neutral-900 border border-neutral-800 shadow-xl">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Image Preview Unavailable</h4>
+                  <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
+                    This portrait was generated before persistent cloud blob storage was activated and is no longer available on the server.
+                  </p>
+                  <button
+                    onClick={() => handleDelete(selectedImage)}
+                    disabled={deletingId === selectedImage.id}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border ${
+                      confirmDeleteId === selectedImage.id
+                        ? "bg-rose-600 text-white border-rose-500 animate-pulse"
+                        : "bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border-rose-500/30"
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>
+                      {deletingId === selectedImage.id
+                        ? "Deleting..."
+                        : confirmDeleteId === selectedImage.id
+                        ? "Confirm Remove?"
+                        : "Remove this Record"}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={getFullImageUrl(selectedImage.image_url)}
+                  alt={selectedImage.theme_title || "Portrait"}
+                  onError={() => setFailedImageIds((prev) => new Set(prev).add(selectedImage.id))}
+                  className="max-h-[65vh] w-auto max-w-full object-contain rounded-xl shadow-2xl border border-neutral-800/60"
+                />
+              )}
             </div>
 
             {/* Sidebar Metadata & Actions */}
@@ -301,6 +372,26 @@ export default function MyImagesModal({
                     )}
                   </button>
                 </div>
+
+                {/* Delete Portrait Button */}
+                <button
+                  onClick={() => handleDelete(selectedImage)}
+                  disabled={deletingId === selectedImage.id}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition border ${
+                    confirmDeleteId === selectedImage.id
+                      ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-500 animate-pulse"
+                      : "bg-neutral-900 hover:bg-rose-500/10 text-neutral-400 hover:text-rose-400 border-neutral-800 hover:border-rose-500/30"
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>
+                    {deletingId === selectedImage.id
+                      ? "Deleting..."
+                      : confirmDeleteId === selectedImage.id
+                      ? "Click again to confirm delete"
+                      : "Delete Portrait"}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -339,25 +430,48 @@ export default function MyImagesModal({
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {generations.map((item) => {
                   const thumbUrl = getFullImageUrl(item.thumbnail_url || item.image_url);
+                  const isBroken = failedImageIds.has(item.id);
+
                   return (
                     <div
                       key={item.id}
                       onClick={() => setSelectedImage(item)}
                       className="group relative aspect-[4/5] rounded-xl overflow-hidden bg-neutral-900 border border-neutral-800 hover:border-purple-500/50 transition cursor-pointer shadow-md"
                     >
-                      {/* Portrait Image (Lightweight WebP Thumbnail) */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={thumbUrl}
-                        alt={item.theme_title || "Portrait"}
-                        loading="lazy"
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
+                      {/* Portrait Image or Broken Placeholder */}
+                      {isBroken ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-900/95 p-3 text-center border border-dashed border-neutral-800">
+                          <AlertTriangle className="w-6 h-6 text-amber-400/80 mb-1" />
+                          <span className="text-[11px] font-semibold text-neutral-300">Unavailable</span>
+                          <span className="text-[9px] text-neutral-500 mt-0.5">Pre-cloud image</span>
+                          <button
+                            onClick={(e) => handleDelete(item, e)}
+                            disabled={deletingId === item.id}
+                            className={`mt-2.5 px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 border transition ${
+                              confirmDeleteId === item.id
+                                ? "bg-rose-600 text-white border-rose-500 animate-pulse"
+                                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/20"
+                            }`}
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                            <span>{confirmDeleteId === item.id ? "Confirm?" : "Delete"}</span>
+                          </button>
+                        </div>
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={thumbUrl}
+                          alt={item.theme_title || "Portrait"}
+                          loading="lazy"
+                          onError={() => setFailedImageIds((prev) => new Set(prev).add(item.id))}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                      )}
 
                       {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-90 group-hover:opacity-100 transition flex flex-col justify-between p-2.5 sm:p-3">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-90 group-hover:opacity-100 transition flex flex-col justify-between p-2.5 sm:p-3 pointer-events-none">
                         {/* Top Badges */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between pointer-events-auto">
                           <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/10">
                             {item.aspect_ratio || "4:5"}
                           </span>
@@ -369,7 +483,7 @@ export default function MyImagesModal({
                         </div>
 
                         {/* Bottom Info & Quick Actions */}
-                        <div>
+                        <div className="pointer-events-auto">
                           <p className="text-xs font-bold text-white truncate drop-shadow-sm">
                             {item.theme_title || "Custom Portrait"}
                           </p>
@@ -381,24 +495,40 @@ export default function MyImagesModal({
                               className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {!isBroken && (
+                                <>
+                                  <button
+                                    onClick={(e) => handleDownload(item, e)}
+                                    disabled={downloadingId === item.id}
+                                    title="Download"
+                                    className="p-1 rounded-md bg-white/20 hover:bg-white text-white hover:text-black transition backdrop-blur-md"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleCopyLink(item, e)}
+                                    title="Copy link"
+                                    className="p-1 rounded-md bg-white/20 hover:bg-white text-white hover:text-black transition backdrop-blur-md"
+                                  >
+                                    {copiedId === item.id ? (
+                                      <Check className="w-3 h-3 text-emerald-400" />
+                                    ) : (
+                                      <ExternalLink className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </>
+                              )}
                               <button
-                                onClick={(e) => handleDownload(item, e)}
-                                disabled={downloadingId === item.id}
-                                title="Download"
-                                className="p-1 rounded-md bg-white/20 hover:bg-white text-white hover:text-black transition backdrop-blur-md"
+                                onClick={(e) => handleDelete(item, e)}
+                                disabled={deletingId === item.id}
+                                title={confirmDeleteId === item.id ? "Click again to confirm delete" : "Delete portrait"}
+                                className={`p-1 rounded-md transition backdrop-blur-md ${
+                                  confirmDeleteId === item.id
+                                    ? "bg-rose-600 text-white animate-pulse"
+                                    : "bg-white/20 hover:bg-rose-500 text-white"
+                                }`}
                               >
-                                <Download className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => handleCopyLink(item, e)}
-                                title="Copy link"
-                                className="p-1 rounded-md bg-white/20 hover:bg-white text-white hover:text-black transition backdrop-blur-md"
-                              >
-                                {copiedId === item.id ? (
-                                  <Check className="w-3 h-3 text-emerald-400" />
-                                ) : (
-                                  <ExternalLink className="w-3 h-3" />
-                                )}
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
                           </div>

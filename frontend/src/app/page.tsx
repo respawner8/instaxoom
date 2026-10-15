@@ -181,6 +181,25 @@ export default function Home() {
     }
   };
 
+  const handleDeleteGeneration = async (generationId: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/trends/my-generations/${generationId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        setMyGenerations((prev) => prev.filter((item) => item.id !== generationId));
+      } else {
+        console.error("Failed to delete generation, status:", res.status);
+      }
+    } catch (err) {
+      console.error("Failed to delete generation:", err);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchMyGenerations();
@@ -1285,6 +1304,7 @@ export default function Home() {
         generations={myGenerations}
         isLoading={isLoadingGenerations}
         onRefresh={fetchMyGenerations}
+        onDelete={handleDeleteGeneration}
         apiUrl={apiUrl}
       />
     </main>

@@ -181,6 +181,56 @@ class StorageService:
         )
         return master_url, thumb_url
 
+    async def delete_portrait_assets(
+        self,
+        image_url: str,
+        thumbnail_url: Optional[str] = None,
+    ) -> None:
+        """
+        Deletes the master image and thumbnail from Azure Blob Storage and local outputs directory.
+        """
+        def _extract_filename(url: str) -> str:
+            path = url.split("?")[0]
+            return os.path.basename(path)
+
+        filenames_to_delete = set()
+        if image_url:
+            master_fname = _extract_filename(image_url)
+            filenames_to_delete.add(master_fname)
+            name_root, _ = os.path.splitext(master_fname)
+            filenames_to_delete.add(f"{name_root}_thumb.webp")
+
+        if thumbnail_url:
+            filenames_to_delete.add(_extract_filename(thumbnail_url))
+
+        # 1. Delete from Azure Blob Storage if configured
+        container_client = self._init_azure_client()
+        if container_client is not None:
+            try:
+                def _do_delete_blobs():
+                    for fname in filenames_to_delete:
+                        try:
+                            blob_client = container_client.get_blob_client(fname)
+                            if blob_client.exists():
+                                blob_client.delete_blob(delete_snapshots="include")
+                                logger.info(f"[Storage] Deleted Azure Blob: {fname}")
+                        except Exception as b_err:
+                            logger.debug(f"[Storage] Azure Blob delete note for {fname}: {b_err}")
+
+                await asyncio.to_thread(_do_delete_blobs)
+            except Exception as azure_err:
+                logger.warning(f"[Storage] Azure delete error: {azure_err}")
+
+        # 2. Delete from local outputs/ directory if present
+        for fname in filenames_to_delete:
+            local_path = os.path.join(OUTPUTS_DIR, fname)
+            if os.path.isfile(local_path):
+                try:
+                    os.remove(local_path)
+                    logger.info(f"[Storage] Deleted local file: {fname}")
+                except Exception as local_err:
+                    logger.debug(f"[Storage] Local delete note for {fname}: {local_err}")
+
 
 # Global singleton instance
 storage_service = StorageService()
