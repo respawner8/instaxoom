@@ -42,10 +42,10 @@ class StorageService:
         if self._initialized:
             return self._container_client
 
-        conn_str = settings.AZURE_STORAGE_CONNECTION_STRING
-        account_name = settings.AZURE_STORAGE_ACCOUNT_NAME
-        account_key = settings.AZURE_STORAGE_ACCOUNT_KEY
-        container_name = settings.AZURE_STORAGE_CONTAINER_NAME or "instaxoom-images"
+        conn_str = (settings.AZURE_STORAGE_CONNECTION_STRING or "").strip().strip('"').strip("'")
+        account_name = (settings.AZURE_STORAGE_ACCOUNT_NAME or "").strip().strip('"').strip("'")
+        account_key = (settings.AZURE_STORAGE_ACCOUNT_KEY or "").strip().strip('"').strip("'")
+        container_name = (settings.AZURE_STORAGE_CONTAINER_NAME or "instaxoom-images").strip().strip('"').strip("'")
 
         if not conn_str and not (account_name and account_key):
             self._initialized = True
@@ -55,8 +55,17 @@ class StorageService:
         try:
             from azure.storage.blob import BlobServiceClient, PublicAccess
 
-            if conn_str:
+            if conn_str and ("DefaultEndpointsProtocol=" in conn_str or "AccountName=" in conn_str):
                 self._blob_service_client = BlobServiceClient.from_connection_string(conn_str)
+            elif conn_str:
+                # Resilient fallback: Raw account key provided in AZURE_STORAGE_CONNECTION_STRING
+                eff_name = account_name or "stinstaxoomprod"
+                account_url = f"https://{eff_name}.blob.core.windows.net"
+                logger.info(f"[Storage] Initializing Azure Blob Storage client using account key for '{eff_name}'.")
+                self._blob_service_client = BlobServiceClient(
+                    account_url=account_url,
+                    credential=conn_str,
+                )
             else:
                 account_url = f"https://{account_name}.blob.core.windows.net"
                 self._blob_service_client = BlobServiceClient(
