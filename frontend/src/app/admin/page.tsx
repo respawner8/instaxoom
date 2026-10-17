@@ -187,7 +187,7 @@ export default function AdminPage() {
       <div className="min-h-screen bg-[#0a0a0c] flex flex-col items-center justify-center text-neutral-300 gap-4">
         <Shield className="w-12 h-12 text-rose-500" />
         <h2 className="text-xl font-bold">Access Restricted</h2>
-        <p className="text-sm text-neutral-400">This portal is reserved for instaXoom administrators.</p>
+        <p className="text-sm text-neutral-400">This portal is reserved for CreatorBot administrators.</p>
         <Link
           href="/"
           className="px-4 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm font-semibold transition"
