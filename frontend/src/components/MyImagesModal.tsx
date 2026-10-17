@@ -115,7 +115,7 @@ export default function MyImagesModal({
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = `instaxoom_${item.theme_id || "portrait"}_${item.job_id.slice(0, 8)}.png`;
+      link.download = `creatorbot_${item.theme_id || "portrait"}_${item.job_id.slice(0, 8)}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -146,8 +146,8 @@ export default function MyImagesModal({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `My instaXoom ${item.theme_title || "Portrait"}`,
-          text: `Check out my AI portrait generated on instaXoom!`,
+          title: `My CreatorBot ${item.theme_title || "Portrait"}`,
+          text: `Check out my AI portrait generated on CreatorBot! Generate yours today: www.creatorbot.si`,
           url: fullUrl,
         });
       } catch (err) {

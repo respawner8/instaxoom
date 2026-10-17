@@ -4,8 +4,12 @@ import { AuthProvider } from "@/context/AuthContext";
 import TelemetryBootstrap from "@/components/TelemetryBootstrap";
 
 export const metadata: Metadata = {
-  title: "instaXoom | Daily AI Trends for Instagram",
-  description: "Generate viral AI portraits tailored for Instagram feed, stories, and reels using daily trends.",
+  title: "CreatorBot | Daily AI Trends for Creators",
+  description: "Generate viral AI portraits tailored for creators and social media using daily trends.",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

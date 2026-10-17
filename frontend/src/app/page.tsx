@@ -51,7 +51,7 @@ const DEFAULT_THEMES: Theme[] = [
     title: "1990s Yearbook",
     category: "Vintage",
     tagline: "Authentic 1994 vintage yearbook portrait with film grain, soft flash, and blue studio backdrop.",
-    hashtags: ["#90sYearbook", "#VintageAesthetic", "#instaXoom"],
+    hashtags: ["#90sYearbook", "#VintageAesthetic", "#CreatorBot"],
     prompt_template: "1990s retro vintage yearbook portrait, 35mm film photography, soft direct camera flash lighting, slightly faded vintage colors, textured blue studio portrait backdrop, smiling adult subject, authentic 90s hair and collar shirt",
   },
   {
@@ -59,7 +59,7 @@ const DEFAULT_THEMES: Theme[] = [
     title: "Cyberpunk 2077",
     category: "Sci-Fi",
     tagline: "Dystopian night city portrait drenched in vivid magenta and cyan neon reflections.",
-    hashtags: ["#Cyberpunk", "#NeonTokyo", "#instaXoom"],
+    hashtags: ["#Cyberpunk", "#NeonTokyo", "#CreatorBot"],
     prompt_template: "cyberpunk portrait, high-tech glowing neon rain-slicked city streets background, dramatic volumetric rim lighting, vivid magenta and cyan reflections, wearing futuristic cybernetic collar and techwear jacket, 8k cinematic film still, detailed reflections",
   },
   {
@@ -570,7 +570,7 @@ export default function Home() {
     setShareNotice(null);
 
     try {
-      const filename = `instaxoom_${selectedTheme.id}_portrait.png`;
+      const filename = `creatorbot_${selectedTheme.id}_portrait.png`;
       // Fetch image as blob to bypass cross-origin browser download restrictions
       const response = await fetch(generatedImage, { mode: "cors" });
       if (!response.ok) throw new Error("Network response was not ok");
@@ -602,8 +602,8 @@ export default function Home() {
     setShareNotice(null);
 
     const hashtagStr = selectedTheme.hashtags.join(" ");
-    const caption = `Transformed myself with the ${selectedTheme.title} aesthetic on instaXoom! ${hashtagStr}`;
-    const filename = `instaxoom_${selectedTheme.id}.png`;
+    const caption = `Transformed myself with the ${selectedTheme.title} aesthetic on CreatorBot! Generate yours today: www.creatorbot.si ${hashtagStr}`;
+    const filename = `creatorbot_${selectedTheme.id}.png`;
 
     try {
       const response = await fetch(generatedImage, { mode: "cors" });
@@ -614,7 +614,7 @@ export default function Home() {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: `${selectedTheme.title} on instaXoom`,
+          title: `${selectedTheme.title} on CreatorBot`,
           text: caption,
         });
         return;
@@ -665,8 +665,8 @@ export default function Home() {
     setShareNotice(null);
 
     const hashtagStr = selectedTheme.hashtags.join(" ");
-    const caption = `Check out my ${selectedTheme.title} AI portrait created on instaXoom! ${hashtagStr}`;
-    const filename = `instaxoom_${selectedTheme.id}.png`;
+    const caption = `Check out my ${selectedTheme.title} AI portrait created on CreatorBot! Generate yours today - www.creatorbot.si ${hashtagStr}`;
+    const filename = `creatorbot_${selectedTheme.id}.png`;
 
     try {
       const response = await fetch(generatedImage, { mode: "cors" });
@@ -677,7 +677,7 @@ export default function Home() {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: `instaXoom ${selectedTheme.title}`,
+          title: `CreatorBot ${selectedTheme.title}`,
           text: caption,
         });
         return;
@@ -714,12 +714,14 @@ export default function Home() {
     <main className="min-h-screen bg-[#0a0a0c] text-neutral-100 flex flex-col">
       {/* Top Navigation */}
       <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-4 sm:px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-rose-500/20">
-            X
-          </div>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/icon.svg"
+            alt="CreatorBot Logo"
+            className="w-8 h-8 rounded-xl shadow-lg shadow-rose-500/20"
+          />
           <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
-            instaXoom
+            CreatorBot
           </span>
         </div>
 
