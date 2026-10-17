@@ -29,6 +29,7 @@ import {
   Shield,
   Coins,
   LogOut,
+  Gift,
   Image as ImageIcon,
 } from "lucide-react";
 import { autoCropAndDetectFace, ProcessedPhotoResult } from "@/lib/faceCropper";
@@ -107,7 +108,24 @@ interface QueueStatusInfo {
 
 export default function Home() {
   const router = useRouter();
-  const { user, token, loginWithGoogle, logout, updateCredits, isConfigured } = useAuth();
+  const { user, token, loginWithGoogle, logout, updateCredits, claimFreeCredits, isConfigured } = useAuth();
+  const [isClaimingCredits, setIsClaimingCredits] = useState<boolean>(false);
+  const [claimSuccessMessage, setClaimSuccessMessage] = useState<string | null>(null);
+
+  const handleClaimFreeCredits = async () => {
+    if (isClaimingCredits) return;
+    setIsClaimingCredits(true);
+    setErrorMessage(null);
+    try {
+      await claimFreeCredits();
+      setClaimSuccessMessage("🎉 5 free credits claimed successfully! Enjoy generating.");
+      setTimeout(() => setClaimSuccessMessage(null), 5000);
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to claim free credits. Please try again.");
+    } finally {
+      setIsClaimingCredits(false);
+    }
+  };
 
   const envEngine = (process.env.NEXT_PUBLIC_ENGINE || "flux").toLowerCase();
   const [activeEngine, setActiveEngine] = useState<string>(envEngine);
@@ -758,6 +776,23 @@ export default function Home() {
                 <span>{user.credits} Credit{user.credits === 1 ? "" : "s"}</span>
               </div>
 
+              {/* Claim 5 Free Credits Button */}
+              {!user.free_credits_claimed && (
+                <button
+                  onClick={handleClaimFreeCredits}
+                  disabled={isClaimingCredits}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:opacity-90 text-white transition text-xs font-extrabold shadow-md shadow-rose-500/25 active:scale-95 animate-pulse hover:animate-none"
+                  title="Claim your 5 free lifetime credits"
+                >
+                  {isClaimingCredits ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Gift className="w-3.5 h-3.5 text-white" />
+                  )}
+                  <span>{isClaimingCredits ? "Claiming..." : "Claim 5 Free Credits"}</span>
+                </button>
+              )}
+
               {/* Admin Portal Button */}
               {user.role === "admin" && (
                 <Link
@@ -797,6 +832,10 @@ export default function Home() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-purple-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold shadow-sm">
+                <Gift className="w-3.5 h-3.5 text-rose-400" />
+                <span>Sign in to Claim 5 Free Credits</span>
+              </span>
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={() => setErrorMessage("Google login failed")}
@@ -1048,15 +1087,22 @@ export default function Home() {
 
           {/* Step 5: Generate CTA */}
           <div className="space-y-3">
+            {claimSuccessMessage && (
+              <div className="p-3.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in duration-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{claimSuccessMessage}</span>
+              </div>
+            )}
+
             {!user ? (
               <div className="p-4 rounded-2xl border border-neutral-800 bg-neutral-950/60 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-rose-400">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-amber-500/20 via-rose-500/20 to-purple-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                    <Gift className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="font-semibold text-sm text-neutral-100">Sign in with Google to Generate</div>
-                    <div className="text-xs text-neutral-400">1 image = 1 credit. New accounts require trial credit activation.</div>
+                    <div className="font-semibold text-sm text-neutral-100">Sign in with Google & Claim 5 Free Credits</div>
+                    <div className="text-xs text-neutral-400">1 image = 1 credit. New accounts can claim 5 free starter credits.</div>
                   </div>
                 </div>
                 <div className="shrink-0">
@@ -1070,25 +1116,58 @@ export default function Home() {
                 </div>
               </div>
             ) : user.credits < 1 ? (
-              <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <Coins className="w-6 h-6 text-amber-400 shrink-0" />
-                  <div>
-                    <div className="font-bold text-sm">0 Credits Remaining</div>
-                    <div className="text-xs text-amber-300/80">
-                      You need at least 1 credit to generate portraits. Contact an admin to receive trial credits.
+              !user.free_credits_claimed ? (
+                <div className="p-4 rounded-2xl border border-rose-500/40 bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 text-rose-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md shadow-rose-500/20">
+                      <Gift className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-white">Claim Your 5 Free Credits!</div>
+                      <div className="text-xs text-neutral-300">
+                        Get 5 free lifetime credits to begin generating your AI portraits.
+                      </div>
                     </div>
                   </div>
-                </div>
-                {user.role === "admin" && (
-                  <Link
-                    href="/admin"
-                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs whitespace-nowrap hover:bg-amber-400 transition"
+                  <button
+                    onClick={handleClaimFreeCredits}
+                    disabled={isClaimingCredits}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-purple-600 hover:opacity-90 text-white font-bold text-xs whitespace-nowrap shadow-lg shadow-rose-500/20 transition flex items-center gap-1.5 shrink-0 active:scale-95"
                   >
-                    Grant Myself Credits &rarr;
-                  </Link>
-                )}
-              </div>
+                    {isClaimingCredits ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Claiming...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Gift className="w-3.5 h-3.5" />
+                        <span>Claim 5 Free Credits</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <Coins className="w-6 h-6 text-amber-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-sm">0 Credits Remaining</div>
+                      <div className="text-xs text-amber-300/80">
+                        You have used all credits. Contact an admin to receive more credits.
+                      </div>
+                    </div>
+                  </div>
+                  {user.role === "admin" && (
+                    <Link
+                      href="/admin"
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs whitespace-nowrap hover:bg-amber-400 transition"
+                    >
+                      Grant Myself Credits &rarr;
+                    </Link>
+                  )}
+                </div>
+              )
             ) : null}
 
             <button

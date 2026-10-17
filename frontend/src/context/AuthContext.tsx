@@ -17,6 +17,7 @@ export interface User {
   avatar_url?: string;
   role: "user" | "admin";
   credits: number;
+  free_credits_claimed?: boolean;
 }
 
 interface AuthContextType {
@@ -27,6 +28,7 @@ interface AuthContextType {
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateCredits: (credits: number) => void;
+  claimFreeCredits: () => Promise<User>;
   isConfigured: boolean;
 }
 
@@ -135,6 +137,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => (prev ? { ...prev, credits } : prev));
   };
 
+  const claimFreeCredits = async (): Promise<User> => {
+    if (!token) {
+      throw new Error("You must be logged in to claim free credits.");
+    }
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const res = await fetch(`${apiUrl}/api/auth/claim-free-credits`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res
+        .json()
+        .catch(() => ({ detail: "Failed to claim free credits." }));
+      throw new Error(err.detail || "Failed to claim free credits.");
+    }
+
+    const updatedUser: User = await res.json();
+    setUser(updatedUser);
+    trackEvent("credits.claimed_free", {
+      new_balance: updatedUser.credits,
+    });
+    return updatedUser;
+  };
+
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <AuthContext.Provider
@@ -146,6 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logout,
           refreshUser,
           updateCredits,
+          claimFreeCredits,
           isConfigured,
         }}
       >

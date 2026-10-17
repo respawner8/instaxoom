@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -27,6 +28,8 @@ class User(Base):
     avatar_url = Column(Text, nullable=True)
     role = Column(String(32), default="user", nullable=False)  # "user" | "admin"
     is_active = Column(Boolean, default=True, nullable=False)
+    free_credits_claimed = Column(Boolean, default=False, server_default=text("false"), nullable=False)
+    free_credits_claimed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

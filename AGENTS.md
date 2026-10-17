@@ -12,3 +12,11 @@
 
 3. **Review Before Committing:**
    - Present changed files and diff summaries to the user for review before committing.
+
+4. **Fire Review Agent Before Push:**
+   - Always fire a dedicated code review agent (`code-reviewer`) to inspect git diffs, security, and correctness before asking for push approval.
+   - Present the reviewer agent's findings and verdict in the summary to the user.
+
+5. **Avoid Over-Engineering:**
+   - Keep implementations clean, direct, simple, and pragmatic.
+   - Do not over-engineer solutions with unnecessary abstractions, excess boilerplate, or speculative features unless explicitly requested.
