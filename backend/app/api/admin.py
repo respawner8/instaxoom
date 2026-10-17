@@ -26,6 +26,7 @@ class AdminUserItem(BaseModel):
     avatar_url: Optional[str]
     role: str
     credits: int
+    free_credits_claimed: bool = False
     created_at: str
     last_login_at: str
 
@@ -149,6 +150,7 @@ async def list_users(
             "avatar_url": u.avatar_url,
             "role": u.role,
             "credits": u.credit.balance if u.credit else 0,
+            "free_credits_claimed": bool(u.free_credits_claimed),
             "created_at": u.created_at.isoformat() if u.created_at else "",
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else "",
         }

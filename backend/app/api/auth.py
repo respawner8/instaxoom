@@ -27,6 +27,7 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     role: str
     credits: int
+    free_credits_claimed: bool = False
 
 
 class AuthResponse(BaseModel):
@@ -168,6 +169,7 @@ async def login_with_google(body: GoogleAuthRequest, db: AsyncSession = Depends(
             avatar_url=user.avatar_url,
             role=user.role,
             credits=user.credit.balance if user.credit else 0,
+            free_credits_claimed=bool(user.free_credits_claimed),
         ),
     )
 
@@ -182,4 +184,79 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
         avatar_url=current_user.avatar_url,
         role=current_user.role,
         credits=current_user.credit.balance if current_user.credit else 0,
+        free_credits_claimed=bool(current_user.free_credits_claimed),
+    )
+
+
+@router.post("/claim-free-credits", response_model=UserResponse)
+async def claim_free_credits(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Allows any user to claim 5 free trial credits once in their lifetime.
+    Uses row-level locking (with_for_update) to prevent race conditions or double-claims.
+    """
+    # 1. Lock user row to prevent concurrent claims
+    stmt = (
+        select(User)
+        .options(selectinload(User.credit))
+        .where(User.id == current_user.id)
+        .with_for_update()
+    )
+    res = await db.execute(stmt)
+    user = res.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if user.free_credits_claimed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already claimed your 5 free lifetime credits.",
+        )
+
+    # 2. Lock and fetch user credit balance
+    c_stmt = (
+        select(UserCredit)
+        .where(UserCredit.user_id == user.id)
+        .with_for_update()
+    )
+    c_res = await db.execute(c_stmt)
+    user_credit = c_res.scalar_one_or_none()
+
+    if not user_credit:
+        user_credit = UserCredit(user_id=user.id, balance=0)
+        db.add(user_credit)
+        await db.flush()
+
+    # 3. Add 5 credits and mark as claimed
+    user_credit.balance += 5
+    user.free_credits_claimed = True
+    user.free_credits_claimed_at = datetime.now(timezone.utc)
+
+    # 4. Record credit transaction
+    tx = CreditTransaction(
+        user_id=user.id,
+        amount=5,
+        balance_after=user_credit.balance,
+        action="free_grant",
+        description="Claimed 5 free lifetime starter credits",
+        meta_data={"claimed_at": user.free_credits_claimed_at.isoformat()},
+    )
+    db.add(tx)
+
+    await db.commit()
+
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        name=user.name,
+        avatar_url=user.avatar_url,
+        role=user.role,
+        credits=user_credit.balance,
+        free_credits_claimed=True,
     )

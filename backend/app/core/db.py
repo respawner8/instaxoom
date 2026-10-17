@@ -1,10 +1,12 @@
 import ssl
+import logging
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings
 
+logger = logging.getLogger("app.db")
 Base = declarative_base()
 
 # Determine SSL requirements: Neon and cloud Postgres require SSL
@@ -58,9 +60,14 @@ async def init_db():
         # Import models so Base has all definitions
         import app.models.user  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
-        # Migrate existing tables: add thumbnail_url to generations if missing
-        try:
-            from sqlalchemy import text
-            await conn.execute(text("ALTER TABLE generations ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
-        except Exception:
-            pass
+        # Migrate existing tables: add thumbnail_url and free credits columns if missing
+        from sqlalchemy import text
+        for query in [
+            "ALTER TABLE generations ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed BOOLEAN NOT NULL DEFAULT FALSE;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed_at TIMESTAMPTZ;",
+        ]:
+            try:
+                await conn.execute(text(query))
+            except Exception as e:
+                logger.warning("Schema migration notice (%s): %s", query, e)

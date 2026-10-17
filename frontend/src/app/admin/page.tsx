@@ -29,6 +29,7 @@ interface AdminUserItem {
   avatar_url?: string;
   role: string;
   credits: number;
+  free_credits_claimed?: boolean;
   created_at: string;
   last_login_at: string;
 }
@@ -502,6 +503,7 @@ export default function AdminPage() {
                     <th className="py-3 px-4">User</th>
                     <th className="py-3 px-4">Role</th>
                     <th className="py-3 px-4 text-center">Credit Balance</th>
+                    <th className="py-3 px-4 text-center">Free Trial</th>
                     <th className="py-3 px-4">Created Date</th>
                     <th className="py-3 px-4">Last Login</th>
                     <th className="py-3 px-4 text-right">Action</th>
@@ -510,7 +512,7 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-neutral-800/60 font-medium">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-neutral-500">
+                      <td colSpan={7} className="py-8 text-center text-neutral-500">
                         {searchQuery ? "No users matching search query." : "No registered users yet."}
                       </td>
                     </tr>
@@ -546,6 +548,17 @@ export default function AdminPage() {
                             <Coins className="w-3 h-3" />
                             {u.credits}
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {u.free_credits_claimed ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                              Claimed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-neutral-400 bg-neutral-800 px-2 py-0.5 rounded-full border border-neutral-700">
+                              Unclaimed
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-neutral-400 text-[11px]">
                           {u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}
