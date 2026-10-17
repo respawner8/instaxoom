@@ -20,3 +20,12 @@
 5. **Avoid Over-Engineering:**
    - Keep implementations clean, direct, simple, and pragmatic.
    - Do not over-engineer solutions with unnecessary abstractions, excess boilerplate, or speculative features unless explicitly requested.
+
+6. **Write & Run Unit Tests Before Pushing:**
+   - Always write targeted unit tests for any new tasks, endpoints, or features to verify correctness and prevent regressions.
+   - Run the test suite before requesting review and push approval:
+     - Backend: `PYTHONPATH=backend ./backend/.venv/bin/python -m unittest discover -s backend/tests`
+     - Frontend: `npm run build` (in `frontend/`)
+   - Ensure all tests pass cleanly without failures or errors.
+   - Never push code with broken or failing tests.
+

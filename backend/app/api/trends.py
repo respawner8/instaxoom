@@ -17,7 +17,7 @@ from app.services.azure_image_client import azure_image_client
 from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_user_optional
-from app.models.user import User, UserCredit, CreditTransaction, Generation
+from app.models.user import User, UserCredit, CreditTransaction, Generation, ThemePreset
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 from app.core.app_metrics import (
@@ -103,6 +103,74 @@ THEMES = [
 ]
 
 TODAY_TREND = THEMES[0]
+
+
+async def get_active_themes() -> List[Dict[str, Any]]:
+    """
+    Returns active themes from PostgreSQL, falling back to static THEMES
+    if database is empty or unavailable.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(ThemePreset)
+                .where(ThemePreset.is_active == True)
+                .order_by(ThemePreset.order_index, ThemePreset.created_at)
+            )
+            res = await session.execute(stmt)
+            db_themes = res.scalars().all()
+            if db_themes:
+                return [
+                    {
+                        "id": t.id,
+                        "title": t.title,
+                        "category": t.category,
+                        "tagline": t.tagline,
+                        "hashtags": t.hashtags or [],
+                        "prompt_template": t.prompt_template,
+                        "preview_image_url": t.preview_image_url,
+                    }
+                    for t in db_themes
+                ]
+    except Exception:
+        pass
+    return THEMES
+
+
+async def resolve_theme(theme_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Resolves the theme specification by ID from DB or static THEMES,
+    falling back to today's active trend.
+    """
+    if theme_id:
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(ThemePreset).where(
+                    ThemePreset.id == theme_id,
+                    ThemePreset.is_active == True,
+                )
+                res = await session.execute(stmt)
+                db_t = res.scalar_one_or_none()
+                if db_t:
+                    return {
+                        "id": db_t.id,
+                        "title": db_t.title,
+                        "category": db_t.category,
+                        "tagline": db_t.tagline,
+                        "hashtags": db_t.hashtags or [],
+                        "prompt_template": db_t.prompt_template,
+                        "preview_image_url": db_t.preview_image_url,
+                    }
+        except Exception:
+            pass
+
+        matched = next((t for t in THEMES if t["id"] == theme_id), None)
+        if matched:
+            return matched
+
+    active = await get_active_themes()
+    return active[0] if active else TODAY_TREND
+
 
 OUTPUTS_DIR = os.path.join(os.getcwd(), "outputs")
 generation_lock = asyncio.Lock()
@@ -392,9 +460,11 @@ async def get_today_trend(
     Returns today's active platform trend along with full themes catalogue and active engine metadata.
     """
     credits = current_user.credit.balance if (current_user and current_user.credit) else 0
+    active_themes = await get_active_themes()
+    primary_trend = active_themes[0] if active_themes else TODAY_TREND
     return {
-        "trend": TODAY_TREND,
-        "themes": THEMES,
+        "trend": primary_trend,
+        "themes": active_themes,
         "engine": settings.ENGINE,
         "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
@@ -452,7 +522,7 @@ async def generate_trend_image(
     Supports real-time SSE streaming for live queue position and countdown tracking.
     """
     active_engine = (engine or settings.ENGINE).lower()
-    selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+    selected_theme = await resolve_theme(theme_id)
 
     if not current_user.credit or current_user.credit.balance < 1:
         credit_rejections.add(1, {"user_role": current_user.role, "theme_id": selected_theme["id"]})
@@ -534,7 +604,7 @@ async def generate_trend_image(
         if limit and len(photo_bytes) > limit:
             raise HTTPException(status_code=413, detail=f"Photo must be at most {limit} bytes.")
 
-        selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+        selected_theme = await resolve_theme(theme_id)
         if prompt and prompt.strip():
             base_prompt = prompt.strip()
         else:
@@ -769,7 +839,7 @@ async def generate_trend_image(
         width, height = (864, 1080)
 
     # 4. Resolve prompt: User-edited prompt takes precedence, falls back to selected theme template
-    selected_theme = next((t for t in THEMES if t["id"] == theme_id), TODAY_TREND)
+    selected_theme = await resolve_theme(theme_id)
 
     if prompt and prompt.strip():
         base_prompt = prompt.strip()
@@ -823,7 +893,7 @@ async def generate_trend_image(
 
         image_url = f"/api/trends/outputs/{output_filename}"
         try:
-            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"])
+            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url_val=image_url)
         except Exception:
             revenue_integrity_anomalies.add(1, {
                 "anomaly_type": "gen_success_no_deduct",

@@ -2,10 +2,12 @@ import asyncio
 import json
 import tempfile
 import unittest
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from app.api.deps import get_current_user
 from app.api.trends import build_workflow_prompt, comfy_client
 from app.core.config import settings
 from app.main import app
@@ -19,8 +21,42 @@ class NativeDeploymentTests(unittest.TestCase):
         self.cwd = patch("app.api.trends.os.getcwd", return_value=self.directory.name)
         self.cwd.start()
         self.addCleanup(self.cwd.stop)
+
+        self.engine_patch = patch.object(settings, "ENGINE", "flux")
+        self.engine_patch.start()
+        self.addCleanup(self.engine_patch.stop)
+
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+        mock_user.role = "user"
+        mock_credit = MagicMock()
+        mock_credit.balance = 10
+        mock_user.credit = mock_credit
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        self.addCleanup(app.dependency_overrides.clear)
+
+        mock_result = MagicMock()
+        mock_db_credit = MagicMock()
+        mock_db_credit.balance = 5
+        mock_result.scalar_one_or_none.return_value = mock_db_credit
+        mock_result.scalars.return_value.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.execute.return_value = mock_result
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
+        self.session_patch = patch("app.api.trends.AsyncSessionLocal", return_value=mock_session_ctx)
+        self.session_patch.start()
+        self.addCleanup(self.session_patch.stop)
+
+
+
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
+
 
     def generate(self):
         return self.client.post(
@@ -145,7 +181,7 @@ class NativeDeploymentTests(unittest.TestCase):
         self.assertEqual(graph["20_0"]["inputs"]["image1"], ["10_0", 0])
         self.assertEqual(graph["20_0"]["inputs"]["image2"], ["10_1", 0])
         self.assertEqual(graph["14"]["inputs"]["image"], ["20_0", 0])
-        self.assertIn("young man", graph["5"]["inputs"]["text"])
+        self.assertIn("male subject", graph["5"]["inputs"]["text"])
         self.assertEqual(graph["7"]["inputs"]["model"], ["14", 0])
 
     def test_gender_anchoring_female(self):
@@ -163,7 +199,7 @@ class NativeDeploymentTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["gender"], "female")
         graph = queue.await_args.args[0]
-        self.assertIn("young woman", graph["5"]["inputs"]["text"])
+        self.assertIn("female subject", graph["5"]["inputs"]["text"])
 
 
 class CompletionTests(unittest.IsolatedAsyncioTestCase):
