@@ -48,6 +48,22 @@ interface Theme {
 
 const DEFAULT_THEMES: Theme[] = [
   {
+    id: "trend-perfect-headshot",
+    title: "Perfect Headshot",
+    category: "Professional",
+    tagline: "Crisp, studio-quality corporate headshot with flattering studio lighting and sharp executive attire.",
+    hashtags: ["#ProfessionalHeadshot", "#LinkedInPhoto", "#ExecutivePortrait", "#CreatorBot"],
+    prompt_template: "ultra-sharp professional executive headshot portrait, crisp studio lighting, subtle softbox key light and rim light, blurred modern architectural office studio background, wearing tailored executive blazer, confident friendly approachable expression, natural skin texture, 85mm portrait lens, 8k professional studio photography",
+  },
+  {
+    id: "trend-auto-enhance",
+    title: "Auto Photo Enhance",
+    category: "Studio Polish",
+    tagline: "Intelligently rebalance color, exposure, brightness, contrast, and clarity to make your photo look its absolute best.",
+    hashtags: ["#PhotoEnhance", "#AutoRetouch", "#ColorGrading", "#CreatorBot"],
+    prompt_template: "masterpiece studio-grade portrait remaster and auto-enhancement of the subject, perfectly balanced exposure, dynamic contrast correction, rich true-to-life color grading, crystal clear sharpness, subtle flattering studio fill lighting, natural skin tones and texture, clean high-definition photographic polish",
+  },
+  {
     id: "trend-retro-90s-yearbook",
     title: "1990s Yearbook",
     category: "Vintage",
@@ -68,7 +84,7 @@ const DEFAULT_THEMES: Theme[] = [
     title: "1970s Polaroid",
     category: "Retro",
     tagline: "Nostalgic analog snapshot with warm sun-drenched golden tones and subtle light leaks.",
-    hashtags: ["#70sVibe", "#AnalogFilm", "#PolaroidAesthetic"],
+    hashtags: ["#70sVibe", "#AnalogFilm", "#PolaroidAesthetic", "#CreatorBot"],
     prompt_template: "1970s vintage polaroid snapshot, warm sepia and golden hour daylight, subtle authentic light leak, soft analog film grain, retro 70s casual wardrobe, candid intimate expression, Kodachrome color palette, nostalgic mood",
   },
   {
@@ -76,7 +92,7 @@ const DEFAULT_THEMES: Theme[] = [
     title: "Old Money Luxury",
     category: "Editorial",
     tagline: "Timeless editorial portrait in a Mediterranean villa garden with natural golden sunlight.",
-    hashtags: ["#OldMoney", "#QuietLuxury", "#EditorialPortrait"],
+    hashtags: ["#OldMoney", "#QuietLuxury", "#EditorialPortrait", "#CreatorBot"],
     prompt_template: "editorial luxury portrait in Lake Como villa terrace garden, soft afternoon golden sunlight, natural bokeh cypress trees and lake in background, wearing tailored cream linen blazer, elegant poised expression, Vogue magazine cover aesthetic",
   },
   {
@@ -84,7 +100,7 @@ const DEFAULT_THEMES: Theme[] = [
     title: "Studio Ghibli",
     category: "Anime",
     tagline: "Dreamy, hand-painted anime portrait with vibrant skies and whimsical storybook atmosphere.",
-    hashtags: ["#GhibliStyle", "#AnimePortrait", "#ArtisticAesthetic"],
+    hashtags: ["#GhibliStyle", "#AnimePortrait", "#ArtisticAesthetic", "#CreatorBot"],
     prompt_template: "masterpiece anime portrait in the whimsical art style of Studio Ghibli, painted watercolor clouds, gentle summer breeze moving hair, warm afternoon light, vibrant hand-drawn aesthetic, high details, Hayao Miyazaki aesthetic",
   },
 ];
@@ -983,7 +999,7 @@ export default function Home() {
             <label className="block text-sm font-semibold text-neutral-200 mb-3">
               2. Select Aesthetic Theme
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {themes.map((theme) => {
                 const isActive = theme.id === selectedTheme.id;
                 return (
