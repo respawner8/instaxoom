@@ -91,9 +91,35 @@ class Settings(BaseSettings):
     AZURE_AI_ENDPOINT: str = "https://imageeastus2-resource.services.ai.azure.com/openai/v1"
     AZURE_AI_API_KEY: Optional[str] = None
     AZURE_AI_DEPLOYMENT: str = "gpt-image-2.5-flare"
+    AZURE_AI_DEPLOYMENTS: Optional[str] = "gpt-image-2.5-flare:2,gpt-image-2.5-sunburst:2,gpt-image-2:2,gpt-image-1.5:9"
     AZURE_AI_API_VERSION: str = "2024-02-01"
     AZURE_RATE_LIMIT_RPM: int = 2
 
+    @property
+    def azure_deployments_list(self) -> List[tuple[str, float]]:
+        """
+        Parses AZURE_AI_DEPLOYMENTS into a priority-ordered list of (deployment_name, rpm).
+        Index 0 is highest priority.
+        """
+        raw = self.AZURE_AI_DEPLOYMENTS or self.AZURE_AI_DEPLOYMENT
+        results: List[tuple[str, float]] = []
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if ":" in item:
+                parts = item.split(":", 1)
+                name = parts[0].strip()
+                try:
+                    rpm = float(parts[1].strip())
+                except ValueError:
+                    rpm = float(self.AZURE_RATE_LIMIT_RPM)
+                results.append((name, rpm))
+            else:
+                results.append((item, float(self.AZURE_RATE_LIMIT_RPM)))
+        if not results:
+            results.append((self.AZURE_AI_DEPLOYMENT, float(self.AZURE_RATE_LIMIT_RPM)))
+        return results
 
     @property
     def cors_origins(self) -> List[str]:

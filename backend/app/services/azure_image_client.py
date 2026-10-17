@@ -44,85 +44,119 @@ def _is_moderation_blocked(err: Exception) -> bool:
     )
 
 
+def get_base_duration_for_model(name: str) -> float:
+    name_lower = name.lower()
+    if "1.5" in name_lower:
+        return 15.0
+    return 25.0
+
+
+class DeploymentWorker:
+    """
+    Represents an individual model deployment worker in Azure AI Foundry.
+    Enforces independent rate-limiting (min_interval), concurrency locking,
+    and adaptive latency tracking per model.
+    """
+    def __init__(self, name: str, rpm: float, priority: int):
+        self.name = name
+        self.rpm = max(0.1, float(rpm))
+        self.priority = priority
+        self.min_interval = 60.0 / self.rpm
+        self.base_duration: float = get_base_duration_for_model(name)
+        self.avg_duration: float = self.base_duration
+        self.lock = asyncio.Lock()
+        self.last_dispatch_time: float = 0.0
+        self.active_job_id: Optional[str] = None
+        self.active_job_start: float = 0.0
+        self.cooldown_until: float = 0.0
+
+    @property
+    def is_locked(self) -> bool:
+        return self.lock.locked()
+
+    def record_completion(self, actual_duration: float):
+        """Updates exponential moving average latency, safely bounded [10s, 40s]."""
+        self.avg_duration = max(10.0, min(40.0, 0.8 * self.avg_duration + 0.2 * actual_duration))
+
+    def cooldown_remaining(self) -> float:
+        return max(0.0, self.cooldown_until - time.time())
+
+    def spacing_remaining(self) -> float:
+        if self.last_dispatch_time <= 0:
+            return 0.0
+        return max(0.0, self.min_interval - (time.time() - self.last_dispatch_time))
+
+    def ready_in_seconds(self) -> float:
+        if self.is_locked:
+            elapsed = time.time() - self.active_job_start if self.active_job_start > 0 else 0.0
+            return max(1.0, self.avg_duration - elapsed)
+        return max(self.cooldown_remaining(), self.spacing_remaining())
+
+    def is_immediately_ready(self) -> bool:
+        return not self.is_locked and self.ready_in_seconds() <= 0.0
+
+
 class AzureImageClient:
     """
-    Client for Microsoft Azure AI Foundry gpt-image-2.5-flare model
-    via the OpenAI-compatible `/openai/v1` API.
-
-    Maintains a sequential FIFO queue ensuring requests are spaced by at least 30 seconds
-    (or starts immediately if the previous request took >= 30 seconds).
-    Tracks live queue positions, estimated wait times, and provides real-time status callbacks.
-    Automatically retries with a 30-second backoff if the model returns a failure
-    or is throttled.
+    Client for Microsoft Azure AI Foundry image generation models
+    supporting a multi-deployment priority pool (e.g. Flare -> Sunburst -> Image-2 -> Image-1.5).
     """
 
     def __init__(self):
-        self._queue_lock = asyncio.Lock()
-        self._last_dispatch_time: float = 0.0
-        self.MIN_INTERVAL_SECONDS: float = 30.0
-        self.ESTIMATED_GEN_DURATION: float = 18.0
-
-        # Live queue tracking
-        self._active_job_id: Optional[str] = None
-        self._active_job_start: float = 0.0
+        self.DEFAULT_DURATION: float = 25.0
+        self._pool_lock = asyncio.Lock()
         self._waiting_jobs: List[Dict[str, Any]] = []
+        self._init_workers()
+
+    def _init_workers(self):
+        self.workers: List[DeploymentWorker] = []
+        deployments = settings.azure_deployments_list
+        for idx, (name, rpm) in enumerate(deployments):
+            self.workers.append(DeploymentWorker(name=name, rpm=rpm, priority=idx + 1))
+        print(
+            f"[Azure Pool] Initialized {len(self.workers)} deployment workers: "
+            + ", ".join([f"#{w.priority} {w.name} ({w.rpm} RPM, est {int(w.base_duration)}s)" for w in self.workers])
+        )
 
     def calculate_estimated_wait(self, position: int) -> int:
-        """
-        Calculates estimated seconds remaining.
-        position = 0: currently processing (active job)
-        position >= 1: waiting in queue
-        """
-        now = time.time()
-        if position == 0:
-            if self._active_job_start > 0:
-                elapsed = now - self._active_job_start
-                return max(1, int(self.ESTIMATED_GEN_DURATION - elapsed))
-            return int(self.ESTIMATED_GEN_DURATION)
-
-        # For waiting jobs:
-        # Time until currently active job finishes or 30s spacing elapses
-        if self._last_dispatch_time > 0:
-            spacing_remaining = max(0.0, self.MIN_INTERVAL_SECONDS - (now - self._last_dispatch_time))
-        else:
-            spacing_remaining = 0.0
-
-        if self._active_job_id is not None:
-            active_gen_remaining = max(1.0, self.ESTIMATED_GEN_DURATION - (now - self._active_job_start))
-            first_slot_wait = max(spacing_remaining, active_gen_remaining)
-        else:
-            first_slot_wait = spacing_remaining
-
-        wait_before_dispatch = first_slot_wait + (position - 1) * self.MIN_INTERVAL_SECONDS
-        total_estimate = wait_before_dispatch + self.ESTIMATED_GEN_DURATION
-        return max(3, int(total_estimate))
+        if position <= 0:
+            return int(self.DEFAULT_DURATION)
+        total_rpm = sum(w.rpm for w in self.workers) or 2.0
+        avg_slot_interval = 60.0 / total_rpm
+        est = (position - 1) * avg_slot_interval + self.DEFAULT_DURATION
+        return max(3, int(est))
 
     def get_queue_status(self) -> Dict[str, Any]:
-        """
-        Returns live queue metrics for public status endpoint.
-        """
         waiting_count = len(self._waiting_jobs)
-        is_active = self._active_job_id is not None
-        new_pos = waiting_count + (1 if is_active else 0)
-        est_seconds = 0 if not is_active else self.calculate_estimated_wait(new_pos)
+        active_workers = [w.name for w in self.workers if w.is_locked or w.active_job_id]
+        active_count = len(active_workers)
+        total_workers = len(self.workers)
 
-        if not is_active and waiting_count == 0:
-            status_text = "Ready (0 waiting)"
-        elif is_active and waiting_count == 0:
-            status_text = f"1 active (~{est_seconds}s wait)"
+        if waiting_count == 0 and active_count < total_workers:
+            available_slots = total_workers - active_count
+            status_text = f"Ready ({available_slots}/{total_workers} slots available)"
+            est_seconds = 0
+        elif waiting_count == 0:
+            min_wait = min((w.ready_in_seconds() for w in self.workers), default=15.0)
+            est_seconds = max(1, int(min_wait))
+            status_text = f"Active ({active_count}/{total_workers} generating, next in ~{est_seconds}s)"
         else:
-            status_text = f"{waiting_count + 1} in queue (~{est_seconds}s wait)"
+            total_rpm = sum(w.rpm for w in self.workers) or 2.0
+            avg_interval = 60.0 / total_rpm
+            est_seconds = max(3, int(waiting_count * avg_interval + 15))
+            status_text = f"{waiting_count} in queue ({active_count}/{total_workers} active, ~{est_seconds}s wait)"
 
         return {
-            "active_jobs": 1 if is_active else 0,
+            "active_jobs": active_count,
             "waiting_jobs": waiting_count,
-            "total_in_queue": waiting_count + (1 if is_active else 0),
+            "total_in_queue": waiting_count + active_count,
+            "total_workers": total_workers,
+            "active_workers": active_workers,
             "estimated_wait_seconds": est_seconds,
             "status_text": status_text,
         }
 
     async def _broadcast_queue_updates(self):
-        """Notifies all waiting jobs of their updated queue positions and estimates."""
         for idx, item in enumerate(list(self._waiting_jobs)):
             cb = item.get("on_status")
             if cb:
@@ -139,7 +173,7 @@ class AzureImageClient:
                     if asyncio.iscoroutine(res):
                         await res
                 except Exception as b_err:
-                    print(f"[Azure Queue] Broadcast error: {b_err}")
+                    print(f"[Azure Pool] Broadcast error: {b_err}")
 
     def _normalize_base_url(self, raw_endpoint: str) -> str:
         """
@@ -327,6 +361,69 @@ class AzureImageClient:
                 detail=f"Azure AI generation failed ({response.status_code}): {response.text}",
             )
 
+    async def _acquire_worker(
+        self,
+        waiting_item: Dict[str, Any],
+        on_status: Optional[Callable[[Dict[str, Any]], Any]] = None,
+    ) -> DeploymentWorker:
+        """
+        Acquires an available worker in priority order.
+        If all workers are busy or cooling down, queues the request and waits until
+        a worker becomes available.
+        """
+        unique_id = waiting_item["job_id"]
+
+        while True:
+            # 1. Under pool lock, check for an immediately ready worker in priority order
+            async with self._pool_lock:
+                # Add to waiting jobs if not present
+                if waiting_item not in self._waiting_jobs:
+                    self._waiting_jobs.append(waiting_item)
+
+                # Check workers in strict priority order (0 = highest priority)
+                for candidate in self.workers:
+                    if candidate.is_immediately_ready():
+                        await candidate.lock.acquire()
+                        if waiting_item in self._waiting_jobs:
+                            self._waiting_jobs.remove(waiting_item)
+                        await self._broadcast_queue_updates()
+                        return candidate
+
+                # If no worker is immediately ready, check if any unlocked worker has lowest spacing
+                # Only front-of-queue job may wait on spacing
+                if self._waiting_jobs and self._waiting_jobs[0]["job_id"] == unique_id:
+                    unlocked_workers = [w for w in self.workers if not w.is_locked and w.cooldown_remaining() <= 0.0]
+                    if unlocked_workers:
+                        best = min(unlocked_workers, key=lambda w: w.ready_in_seconds())
+                        if best.ready_in_seconds() <= 2.5:
+                            await best.lock.acquire()
+                            if waiting_item in self._waiting_jobs:
+                                self._waiting_jobs.remove(waiting_item)
+                            await self._broadcast_queue_updates()
+                            return best
+
+            # 2. Notify queue position while waiting
+            pos = self._waiting_jobs.index(waiting_item) + 1 if waiting_item in self._waiting_jobs else 1
+            est_wait = self.calculate_estimated_wait(pos)
+            if on_status:
+                try:
+                    res = on_status({
+                        "type": "queued",
+                        "job_id": unique_id,
+                        "position": pos,
+                        "estimated_seconds": est_wait,
+                        "message": f"In queue (#{pos} in line) — Est. wait: ~{est_wait}s",
+                    })
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as cb_err:
+                    print(f"[Azure Pool] on_status error: {cb_err}")
+
+            # 3. Sleep briefly before checking pool availability again
+            min_ready = min((w.ready_in_seconds() for w in self.workers), default=1.0)
+            sleep_time = min(max(0.5, min_ready), 2.5)
+            await asyncio.sleep(sleep_time)
+
     async def generate_portrait(
         self,
         photo_bytes: bytes,
@@ -337,10 +434,10 @@ class AzureImageClient:
         on_status: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> tuple[str, str, str]:
         """
-        Enters the sequential queue, waits until at least 30s have passed since the last
-        request started (or starts immediately if the last request took >=30s).
-        Emits live status events (queued, spacing_wait, processing, retrying, completed).
-        If the model returns a failure or is throttled, waits 30s and retries.
+        Dispatches image generation to the highest-priority available worker in the pool
+        (e.g., Flare -> Sunburst -> Image-2 -> Image-1.5).
+        Emits live status updates (queued, spacing_wait, processing, retrying, completed).
+        Automatically fails over to the next priority worker on 429 rate limit errors.
         Returns (output_filename, public_image_url, thumbnail_url).
         """
         if not settings.AZURE_AI_API_KEY:
@@ -351,176 +448,157 @@ class AzureImageClient:
 
         unique_id = job_id or uuid.uuid4().hex[:12]
         output_filename = f"instaxoom_azure_{unique_id}.png"
-
         base_url = self._normalize_base_url(settings.AZURE_AI_ENDPOINT)
-        deployment_name = settings.AZURE_AI_DEPLOYMENT
         size = "1024x1024"
 
         waiting_item = {"job_id": unique_id, "on_status": on_status}
-        self._waiting_jobs.append(waiting_item)
-        position = len(self._waiting_jobs)
+        last_error: Optional[Exception] = None
 
-        # Notify initial queue position if waiting behind another active or queued job
-        if self._active_job_id is not None or position > 1:
-            est_wait = self.calculate_estimated_wait(position)
-            if on_status:
-                try:
-                    res = on_status({
-                        "type": "queued",
-                        "job_id": unique_id,
-                        "position": position,
-                        "estimated_seconds": est_wait,
-                        "message": f"In queue (#{position} in line) — Est. wait: ~{est_wait}s",
-                    })
-                    if asyncio.iscoroutine(res):
-                        await res
-                except Exception as cb_err:
-                    print(f"[Azure Queue] on_status error: {cb_err}")
+        for attempt in range(1, max_retries + 1):
+            worker: Optional[DeploymentWorker] = None
+            try:
+                # 1. Acquire an available worker channel from the priority pool
+                worker = await self._acquire_worker(waiting_item, on_status)
 
-        # Serialize requests via queue lock
-        try:
-            async with self._queue_lock:
-                # Remove self from waiting list as we have acquired execution slot
-                if waiting_item in self._waiting_jobs:
-                    self._waiting_jobs.remove(waiting_item)
-
-                # Broadcast updated queue positions to remaining waiting requests
-                await self._broadcast_queue_updates()
-
-                # Enforce 30-second spacing between request dispatches
-                now = time.time()
-                elapsed = now - self._last_dispatch_time
-                if self._last_dispatch_time > 0 and elapsed < self.MIN_INTERVAL_SECONDS:
-                    wait_time = self.MIN_INTERVAL_SECONDS - elapsed
-                    azure_queue_wait_histogram.record(wait_time, {"reason": "rate_limit_spacing"})
+                # 2. Enforce worker-specific rate-limit spacing if needed
+                spacing_wait = worker.spacing_remaining()
+                if spacing_wait > 0:
+                    azure_queue_wait_histogram.record(spacing_wait, {"reason": "rate_limit_spacing", "worker": worker.name})
                     with tracer.start_as_current_span("azure.queue_spacing_wait") as wait_span:
-                        wait_span.set_attribute("queue.wait_seconds", wait_time)
-                        print(f"[Azure Queue] Request waiting {wait_time:.1f}s in queue to respect 30s spacing...")
+                        wait_span.set_attribute("queue.wait_seconds", spacing_wait)
+                        wait_span.set_attribute("queue.worker", worker.name)
+                        print(f"[Azure Pool] Request waiting {spacing_wait:.1f}s on {worker.name} for rate-limit spacing...")
                         if on_status:
                             try:
                                 res = on_status({
                                     "type": "spacing_wait",
                                     "job_id": unique_id,
-                                    "position": 0,
-                                    "wait_seconds": int(wait_time),
-                                    "estimated_seconds": int(wait_time + self.ESTIMATED_GEN_DURATION),
-                                    "message": f"Spacing requests for rate limit — Starting in {int(wait_time)}s...",
-                                    })
-                                if asyncio.iscoroutine(res):
-                                    await res
-                            except Exception as cb_err:
-                                print(f"[Azure Queue] on_status error: {cb_err}")
-
-                        await asyncio.sleep(wait_time)
-
-                self._active_job_id = unique_id
-                self._active_job_start = time.time()
-                last_error: Optional[Exception] = None
-
-                # Retry loop: if failure or throttled, wait 30 seconds and retry
-                for attempt in range(1, max_retries + 1):
-                    self._last_dispatch_time = time.time()
-                    try:
-                        print(f"[Azure Queue] Dispatching image request to Azure (attempt {attempt}/{max_retries})...")
-                        if on_status:
-                            try:
-                                res = on_status({
-                                    "type": "processing",
-                                    "job_id": unique_id,
-                                    "attempt": attempt,
-                                    "position": 0,
-                                    "estimated_seconds": int(self.ESTIMATED_GEN_DURATION),
-                                    "message": f"Generating portrait with Azure AI... (~15-20s left)",
+                                    "worker": worker.name,
+                                    "wait_seconds": int(spacing_wait),
+                                    "message": f"Spacing requests on {worker.name} — Starting in {int(spacing_wait)}s...",
                                 })
                                 if asyncio.iscoroutine(res):
                                     await res
                             except Exception as cb_err:
-                                print(f"[Azure Queue] on_status error: {cb_err}")
+                                print(f"[Azure Pool] on_status error: {cb_err}")
 
-                        gen_result = await self._execute_single_attempt(
-                            base_url=base_url,
-                            deployment_name=deployment_name,
-                            photo_bytes=photo_bytes,
-                            prompt=prompt,
-                            size=size,
-                            output_filename=output_filename,
-                        )
-                        if gen_result:
-                            image_url, thumb_url = gen_result
-                            print(f"[Azure Queue] Generation succeeded on attempt {attempt}! URL: {image_url}, Thumb: {thumb_url}")
-                            return output_filename, image_url, thumb_url
+                    await asyncio.sleep(spacing_wait)
 
-                    except HTTPException as http_exc:
-                        last_error = http_exc
-                        # Never retry non-transient 400 moderation blocks
-                        if http_exc.status_code == 400 and "content safety filter" in str(http_exc.detail):
-                            raise
+                worker.active_job_id = unique_id
+                worker.active_job_start = time.time()
+                worker.last_dispatch_time = time.time()
 
-                        if attempt < max_retries:
-                            print(
-                                f"[Azure Queue] Model throttled or failed (HTTP {http_exc.status_code}). "
-                                f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
-                            )
-                            if on_status:
-                                try:
-                                    res = on_status({
-                                        "type": "retrying",
-                                        "job_id": unique_id,
-                                        "attempt": attempt + 1,
-                                        "max_retries": max_retries,
-                                        "wait_seconds": 30,
-                                        "message": f"Azure rate limit reached — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
-                                    })
-                                    if asyncio.iscoroutine(res):
-                                        await res
-                                except Exception as cb_err:
-                                    print(f"[Azure Queue] on_status error: {cb_err}")
+                # 3. Notify user of processing on this specific worker
+                est_duration = int(worker.base_duration)
+                print(f"[Azure Pool] Dispatching image request to #{worker.priority} {worker.name} (attempt {attempt}/{max_retries}, est: ~{est_duration}s)...")
+                if on_status:
+                    try:
+                        res = on_status({
+                            "type": "processing",
+                            "job_id": unique_id,
+                            "worker": worker.name,
+                            "attempt": attempt,
+                            "position": 0,
+                            "estimated_seconds": est_duration,
+                            "message": f"Generating portrait with {worker.name}... (~{est_duration}s)",
+                        })
+                        if asyncio.iscoroutine(res):
+                            await res
+                    except Exception as cb_err:
+                        print(f"[Azure Pool] on_status error: {cb_err}")
 
-                            await asyncio.sleep(30.0)
-                            continue
-                        raise
+                # 4. Execute inference attempt
+                gen_result = await self._execute_single_attempt(
+                    base_url=base_url,
+                    deployment_name=worker.name,
+                    photo_bytes=photo_bytes,
+                    prompt=prompt,
+                    size=size,
+                    output_filename=output_filename,
+                )
+                if gen_result:
+                    image_url, thumb_url = gen_result
+                    actual_dur = time.time() - worker.active_job_start
+                    worker.record_completion(actual_dur)
+                    print(f"[Azure Pool] Generation succeeded on {worker.name} in {actual_dur:.1f}s (attempt {attempt})! URL: {image_url}")
+                    return output_filename, image_url, thumb_url
 
-                    except Exception as exc:
-                        last_error = exc
-                        if attempt < max_retries:
-                            print(
-                                f"[Azure Queue] Request encountered error ({exc}). "
-                                f"Waiting 30 seconds before retry (attempt {attempt + 1}/{max_retries})..."
-                            )
-                            if on_status:
-                                try:
-                                    res = on_status({
-                                        "type": "retrying",
-                                        "job_id": unique_id,
-                                        "attempt": attempt + 1,
-                                        "max_retries": max_retries,
-                                        "wait_seconds": 30,
-                                        "message": f"Encountered temporary error — Auto-retrying in 30s (Attempt {attempt + 1}/{max_retries})...",
-                                    })
-                                    if asyncio.iscoroutine(res):
-                                        await res
-                                except Exception as cb_err:
-                                    print(f"[Azure Queue] on_status error: {cb_err}")
+            except HTTPException as http_exc:
+                last_error = http_exc
+                # Do not retry non-transient content moderation blocks
+                if http_exc.status_code == 400 and "content safety filter" in str(http_exc.detail):
+                    raise
 
-                            await asyncio.sleep(30.0)
-                            continue
-                        raise HTTPException(
-                            status_code=502,
-                            detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
-                        )
+                if worker and http_exc.status_code == 429:
+                    worker.cooldown_until = time.time() + 30.0
+                    print(f"[Azure Pool] Worker {worker.name} rate-limited (429). Setting 30s cooldown and failing over...")
 
-                if last_error:
-                    raise last_error
+                if attempt < max_retries:
+                    failover_msg = (
+                        f"Model {worker.name if worker else 'worker'} throttled (HTTP {http_exc.status_code}). "
+                        f"Failing over to next available model in pool (Attempt {attempt + 1}/{max_retries})..."
+                    )
+                    print(f"[Azure Pool] {failover_msg}")
+                    if on_status:
+                        try:
+                            res = on_status({
+                                "type": "retrying",
+                                "job_id": unique_id,
+                                "attempt": attempt + 1,
+                                "max_retries": max_retries,
+                                "wait_seconds": 2,
+                                "message": failover_msg,
+                            })
+                            if asyncio.iscoroutine(res):
+                                await res
+                        except Exception as cb_err:
+                            print(f"[Azure Pool] on_status error: {cb_err}")
 
-                raise HTTPException(status_code=500, detail="Azure generation ended without result.")
+                    await asyncio.sleep(2.0)
+                    continue
+                raise
 
-        finally:
-            if waiting_item in self._waiting_jobs:
-                self._waiting_jobs.remove(waiting_item)
-            if self._active_job_id == unique_id:
-                self._active_job_id = None
-                self._active_job_start = 0.0
-            await self._broadcast_queue_updates()
+            except Exception as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    err_msg = f"Encountered temporary error ({exc}). Retrying with next available worker (Attempt {attempt + 1}/{max_retries})..."
+                    print(f"[Azure Pool] {err_msg}")
+                    if on_status:
+                        try:
+                            res = on_status({
+                                "type": "retrying",
+                                "job_id": unique_id,
+                                "attempt": attempt + 1,
+                                "max_retries": max_retries,
+                                "wait_seconds": 2,
+                                "message": err_msg,
+                            })
+                            if asyncio.iscoroutine(res):
+                                await res
+                        except Exception as cb_err:
+                            print(f"[Azure Pool] on_status error: {cb_err}")
+
+                    await asyncio.sleep(2.0)
+                    continue
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
+                )
+
+            finally:
+                if worker:
+                    worker.active_job_id = None
+                    worker.active_job_start = 0.0
+                    if worker.lock.locked():
+                        worker.lock.release()
+                if waiting_item in self._waiting_jobs:
+                    self._waiting_jobs.remove(waiting_item)
+                await self._broadcast_queue_updates()
+
+        if last_error:
+            raise last_error
+
+        raise HTTPException(status_code=500, detail="Azure generation ended without result.")
 
 
 azure_image_client = AzureImageClient()

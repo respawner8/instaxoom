@@ -131,6 +131,7 @@ export default function Home() {
   const [queueStatus, setQueueStatus] = useState<QueueStatusInfo | null>(null);
   const [liveQueuePosition, setLiveQueuePosition] = useState<number | null>(null);
   const [liveEstSeconds, setLiveEstSeconds] = useState<number>(0);
+  const [liveTotalSeconds, setLiveTotalSeconds] = useState<number>(25);
   const [liveStatusMessage, setLiveStatusMessage] = useState<string>("");
 
   const [themes, setThemes] = useState<Theme[]>(DEFAULT_THEMES);
@@ -433,24 +434,29 @@ export default function Home() {
                   const event = JSON.parse(trimmed.slice(6));
                   if (event.type === "queued" || event.type === "queue_update") {
                     setLiveQueuePosition(event.position);
-                    if (typeof event.estimated_seconds === "number") {
+                    if (typeof event.estimated_seconds === "number" && event.estimated_seconds > 0) {
+                      setLiveTotalSeconds(event.estimated_seconds);
                       setLiveEstSeconds(event.estimated_seconds);
                     }
                     if (event.message) setLiveStatusMessage(event.message);
                   } else if (event.type === "spacing_wait") {
                     setLiveQueuePosition(0);
                     if (typeof event.wait_seconds === "number") {
-                      setLiveEstSeconds(event.wait_seconds + 18);
+                      const tot = event.wait_seconds + 25;
+                      setLiveTotalSeconds(tot);
+                      setLiveEstSeconds(tot);
                     }
                     if (event.message) setLiveStatusMessage(event.message);
                   } else if (event.type === "processing") {
                     setLiveQueuePosition(0);
-                    if (typeof event.estimated_seconds === "number") {
+                    if (typeof event.estimated_seconds === "number" && event.estimated_seconds > 0) {
+                      setLiveTotalSeconds(event.estimated_seconds);
                       setLiveEstSeconds(event.estimated_seconds);
                     }
                     if (event.message) setLiveStatusMessage(event.message);
                   } else if (event.type === "retrying") {
-                    if (typeof event.wait_seconds === "number") {
+                    if (typeof event.wait_seconds === "number" && event.wait_seconds > 0) {
+                      setLiveTotalSeconds(event.wait_seconds);
                       setLiveEstSeconds(event.wait_seconds);
                     }
                     if (event.message) setLiveStatusMessage(event.message);
@@ -1167,7 +1173,15 @@ export default function Home() {
                         Active Generation
                       </span>
                     )}
-                    <span className="text-neutral-300">{liveStatusMessage || "Processing image..."}</span>
+                    <span className="text-neutral-300">
+                      {liveQueuePosition !== null && liveQueuePosition > 0
+                        ? (liveStatusMessage || `Waiting in line (#${liveQueuePosition})...`)
+                        : liveEstSeconds <= 3
+                        ? "Applying final polish & saving to cloud..."
+                        : liveEstSeconds > Math.round(liveTotalSeconds * 0.5)
+                        ? (liveStatusMessage || "Preserving facial likeness & styling...")
+                        : "Rendering lighting, atmosphere & portrait details..."}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1 text-sky-300 font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-sky-950/80 border border-sky-800/60">
                     <Clock className="w-3.5 h-3.5 text-sky-400" />
@@ -1180,9 +1194,7 @@ export default function Home() {
                   <div
                     className="bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 h-full transition-all duration-1000 rounded-full"
                     style={{
-                      width: liveQueuePosition !== null && liveQueuePosition > 0
-                        ? `${Math.max(10, Math.min(85, 100 - (liveEstSeconds * 1.5)))}%`
-                        : `${Math.max(15, Math.min(95, 100 - (liveEstSeconds * 4.5)))}%`
+                      width: `${Math.max(12, Math.min(96, Math.round(((Math.max(1, liveTotalSeconds) - liveEstSeconds) / Math.max(1, liveTotalSeconds)) * 100)))}%`
                     }}
                   />
                 </div>
