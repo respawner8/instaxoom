@@ -97,3 +97,20 @@ class Generation(Base):
 
     user = relationship("User", back_populates="generations")
 
+
+class ThemePreset(Base):
+    __tablename__ = "theme_presets"
+
+    id = Column(String(100), primary_key=True)
+    title = Column(String(255), nullable=False)
+    category = Column(String(64), nullable=False, default="General")
+    tagline = Column(Text, nullable=False, default="")
+    prompt_template = Column(Text, nullable=False)
+    hashtags = Column(JSON, nullable=False, default=list)
+    preview_image_url = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    order_index = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+

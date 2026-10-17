@@ -71,3 +71,32 @@ async def init_db():
                 await conn.execute(text(query))
             except Exception as e:
                 logger.warning("Schema migration notice (%s): %s", query, e)
+
+    # Seed default themes if theme_presets table is empty
+    try:
+        from app.models.user import ThemePreset
+        from sqlalchemy import select, func
+        async with AsyncSessionLocal() as session:
+            count_stmt = select(func.count()).select_from(ThemePreset)
+            res = await session.execute(count_stmt)
+            count = res.scalar() or 0
+            if count == 0:
+                from app.api.trends import THEMES
+                for idx, t in enumerate(THEMES):
+                    preset = ThemePreset(
+                        id=t["id"],
+                        title=t["title"],
+                        category=t.get("category", "General"),
+                        tagline=t.get("tagline", ""),
+                        prompt_template=t["prompt_template"],
+                        hashtags=t.get("hashtags", []),
+                        preview_image_url=t.get("preview_image_url"),
+                        is_active=True,
+                        order_index=idx,
+                    )
+                    session.add(preset)
+                await session.commit()
+                logger.info("Successfully seeded %d default theme presets.", len(THEMES))
+    except Exception as e:
+        logger.warning("Default theme seeding notice: %s", e)
+
