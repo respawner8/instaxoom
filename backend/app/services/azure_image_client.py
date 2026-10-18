@@ -151,7 +151,7 @@ class AzureImageClient:
             "waiting_jobs": waiting_count,
             "total_in_queue": waiting_count + active_count,
             "total_workers": total_workers,
-            "active_workers": active_workers,
+            "active_workers": active_count,
             "estimated_wait_seconds": est_seconds,
             "status_text": status_text,
         }
@@ -473,9 +473,8 @@ class AzureImageClient:
                                 res = on_status({
                                     "type": "spacing_wait",
                                     "job_id": unique_id,
-                                    "worker": worker.name,
                                     "wait_seconds": int(spacing_wait),
-                                    "message": f"Spacing requests on {worker.name} — Starting in {int(spacing_wait)}s...",
+                                    "message": f"Optimal quality pacing — Starting in {int(spacing_wait)}s...",
                                 })
                                 if asyncio.iscoroutine(res):
                                     await res
@@ -488,7 +487,7 @@ class AzureImageClient:
                 worker.active_job_start = time.time()
                 worker.last_dispatch_time = time.time()
 
-                # 3. Notify user of processing on this specific worker
+                # 3. Notify user of processing without leaking internal model names
                 est_duration = int(worker.base_duration)
                 print(f"[Azure Pool] Dispatching image request to #{worker.priority} {worker.name} (attempt {attempt}/{max_retries}, est: ~{est_duration}s)...")
                 if on_status:
@@ -496,11 +495,10 @@ class AzureImageClient:
                         res = on_status({
                             "type": "processing",
                             "job_id": unique_id,
-                            "worker": worker.name,
                             "attempt": attempt,
                             "position": 0,
                             "estimated_seconds": est_duration,
-                            "message": f"Generating portrait with {worker.name}... (~{est_duration}s)",
+                            "message": f"Generating portrait in studio quality... (~{est_duration}s)",
                         })
                         if asyncio.iscoroutine(res):
                             await res
@@ -535,8 +533,8 @@ class AzureImageClient:
 
                 if attempt < max_retries:
                     failover_msg = (
-                        f"Model {worker.name if worker else 'worker'} throttled (HTTP {http_exc.status_code}). "
-                        f"Failing over to next available model in pool (Attempt {attempt + 1}/{max_retries})..."
+                        f"High server load detected. Rerouting to next available studio engine "
+                        f"(Attempt {attempt + 1}/{max_retries})..."
                     )
                     print(f"[Azure Pool] {failover_msg}")
                     if on_status:
@@ -561,8 +559,11 @@ class AzureImageClient:
             except Exception as exc:
                 last_error = exc
                 if attempt < max_retries:
-                    err_msg = f"Encountered temporary error ({exc}). Retrying with next available worker (Attempt {attempt + 1}/{max_retries})..."
-                    print(f"[Azure Pool] {err_msg}")
+                    err_msg = (
+                        f"Encountered temporary error. Retrying with next available studio engine "
+                        f"(Attempt {attempt + 1}/{max_retries})..."
+                    )
+                    print(f"[Azure Pool] Encountered temporary error ({exc}). Retrying (Attempt {attempt + 1}/{max_retries})...")
                     if on_status:
                         try:
                             res = on_status({
@@ -580,9 +581,10 @@ class AzureImageClient:
 
                     await asyncio.sleep(2.0)
                     continue
+                print(f"[Azure Pool] Generation failed after {max_retries} attempts: {exc}")
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Azure AI generation failed after {max_retries} attempts: {str(exc)}",
+                    detail="Studio portrait generation failed after maximum retries. Please try again shortly.",
                 )
 
             finally:
