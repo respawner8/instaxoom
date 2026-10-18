@@ -445,6 +445,7 @@ async def get_queue_status():
         "active_jobs": 0,
         "waiting_jobs": 0,
         "total_in_queue": 0,
+        "active_workers": 0,
         "estimated_wait_seconds": 0,
         "status_text": "Ready (Local GPU)",
     }
@@ -466,7 +467,7 @@ async def get_today_trend(
         "trend": primary_trend,
         "themes": active_themes,
         "engine": settings.ENGINE,
-        "engine_name": "GPT-Image-2.5 Flare (Azure Cloud)" if settings.ENGINE == "azure" else "FLUX.1 [schnell] (Local GPU)",
+        "engine_name": "Cloud Studio" if settings.ENGINE == "azure" else "Local GPU Studio",
         "max_photos": 1 if settings.ENGINE == "azure" else 5,
         "queue_enabled": True if settings.ENGINE == "azure" else False,
         "quota": {
@@ -517,7 +518,7 @@ async def generate_trend_image(
     """
     Accepts user photo(s), verifies user credit balance (requires >= 1 credit),
     executes the inference workflow via either local FLUX.1 (ComfyUI + PuLID)
-    or cloud Azure AI Foundry (gpt-image-2.5-flare), deducts 1 credit upon success,
+    or cloud Azure AI Foundry (Cloud Studio), deducts 1 credit upon success,
     and returns the URL of the generated 4:5 Instagram portrait.
     Supports real-time SSE streaming for live queue position and countdown tracking.
     """
@@ -668,7 +669,7 @@ async def generate_trend_image(
                                 "prompt_used": final_prompt,
                                 "gender": gender,
                                 "aspect_ratio": "4:5",
-                                "engine_used": "azure_gpt_image_2.5_flare",
+                                "engine_used": "azure_studio",
                                 "photos_received": 1,
                                 "image_url": image_url,
                                 "thumbnail_url": thumbnail_url,
@@ -677,7 +678,7 @@ async def generate_trend_image(
                                 "quota": {
                                     "remaining_generations": remaining_credits,
                                 },
-                                "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+                                "message": "Successfully generated 4:5 portrait."
                             })
                         except HTTPException as http_exc:
                             err_type = "throttled_429" if http_exc.status_code == 429 else f"http_{http_exc.status_code}"
@@ -779,7 +780,7 @@ async def generate_trend_image(
             "prompt_used": final_prompt,
             "gender": gender,
             "aspect_ratio": "4:5",
-            "engine_used": "azure_gpt_image_2.5_flare",
+            "engine_used": "azure_studio",
             "photos_received": 1,
             "image_url": image_url,
             "thumbnail_url": thumbnail_url,
@@ -788,7 +789,7 @@ async def generate_trend_image(
             "quota": {
                 "remaining_generations": remaining_credits,
             },
-            "message": "Successfully generated 4:5 portrait via Azure AI Foundry."
+            "message": "Successfully generated 4:5 portrait."
         }
 
 

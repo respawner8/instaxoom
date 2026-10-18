@@ -122,6 +122,17 @@ interface QueueStatusInfo {
   status_text: string;
 }
 
+function cleanStatusMessage(msg: string): string {
+  if (!msg) return "";
+  return msg
+    .replace(/\b(?:gpt-image[a-zA-Z0-9_.-]*|flux[a-zA-Z0-9_.-]*|dall-e[a-zA-Z0-9_.-]*)\b/gi, "")
+    .replace(/\s+with\s*(?:\.{3}|…|\s*\(|\s*~)/gi, "... ")
+    .replace(/\s+on\s*(?:\.{3}|…|\s*—|\s*\(|\s*~)/gi, " — ")
+    .replace(/Model\s+throttled/gi, "Engine capacity reached")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export default function Home() {
   const router = useRouter();
   const { user, token, loginWithGoogle, logout, updateCredits, claimFreeCredits, isConfigured } = useAuth();
@@ -472,7 +483,7 @@ export default function Home() {
                       setLiveTotalSeconds(event.estimated_seconds);
                       setLiveEstSeconds(event.estimated_seconds);
                     }
-                    if (event.message) setLiveStatusMessage(event.message);
+                    if (event.message) setLiveStatusMessage(cleanStatusMessage(event.message));
                   } else if (event.type === "spacing_wait") {
                     setLiveQueuePosition(0);
                     if (typeof event.wait_seconds === "number") {
@@ -480,20 +491,20 @@ export default function Home() {
                       setLiveTotalSeconds(tot);
                       setLiveEstSeconds(tot);
                     }
-                    if (event.message) setLiveStatusMessage(event.message);
+                    if (event.message) setLiveStatusMessage(cleanStatusMessage(event.message));
                   } else if (event.type === "processing") {
                     setLiveQueuePosition(0);
                     if (typeof event.estimated_seconds === "number" && event.estimated_seconds > 0) {
                       setLiveTotalSeconds(event.estimated_seconds);
                       setLiveEstSeconds(event.estimated_seconds);
                     }
-                    if (event.message) setLiveStatusMessage(event.message);
+                    if (event.message) setLiveStatusMessage(cleanStatusMessage(event.message));
                   } else if (event.type === "retrying") {
                     if (typeof event.wait_seconds === "number" && event.wait_seconds > 0) {
                       setLiveTotalSeconds(event.wait_seconds);
                       setLiveEstSeconds(event.wait_seconds);
                     }
-                    if (event.message) setLiveStatusMessage(event.message);
+                    if (event.message) setLiveStatusMessage(cleanStatusMessage(event.message));
                   } else if (event.type === "completed" && event.image_url) {
                     clearInterval(interval);
                     setGenerationProgress(100);
@@ -529,7 +540,7 @@ export default function Home() {
                     ]);
                   } else if (event.type === "error") {
                     clearInterval(interval);
-                    setErrorMessage(event.detail || "Image generation failed.");
+                    setErrorMessage(cleanStatusMessage(event.detail || "Image generation failed."));
                   }
                 } catch (parseErr) {
                   console.warn("SSE parse error:", parseErr);
@@ -584,7 +595,7 @@ export default function Home() {
             if (isAzure) setCooldownSeconds(15);
             setErrorMessage(data.detail || "Server queue is currently processing. Please wait a moment.");
           } else {
-            setErrorMessage(data.detail || "Image generation failed. Please try again.");
+            setErrorMessage(cleanStatusMessage(data.detail || "Image generation failed. Please try again."));
           }
         }
       }
@@ -1272,11 +1283,13 @@ export default function Home() {
                     )}
                     <span className="text-neutral-300">
                       {liveQueuePosition !== null && liveQueuePosition > 0
-                        ? (liveStatusMessage || `Waiting in line (#${liveQueuePosition})...`)
-                        : liveEstSeconds <= 3
+                        ? (cleanStatusMessage(liveStatusMessage) || `Waiting in line (#${liveQueuePosition})...`)
+                        : liveStatusMessage && (liveStatusMessage.includes("Rerouting") || liveStatusMessage.includes("pacing") || liveStatusMessage.includes("Retrying") || liveStatusMessage.includes("Starting"))
+                        ? cleanStatusMessage(liveStatusMessage)
+                        : liveTotalSeconds >= 10 && liveEstSeconds <= 3
                         ? "Applying final polish & saving to cloud..."
                         : liveEstSeconds > Math.round(liveTotalSeconds * 0.5)
-                        ? (liveStatusMessage || "Preserving facial likeness & styling...")
+                        ? (cleanStatusMessage(liveStatusMessage) || "Preserving facial likeness & styling...")
                         : "Rendering lighting, atmosphere & portrait details..."}
                     </span>
                   </div>
