@@ -10,6 +10,7 @@ from app.api.trends import router as trends_router
 from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.telemetry import router as telemetry_router
+from app.api.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
 SERVER_START_TIME = datetime.now(timezone.utc)
@@ -52,6 +53,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(trends_router)
 app.include_router(telemetry_router)
+app.include_router(analytics_router)
 
 
 @app.get("/")

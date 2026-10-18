@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
@@ -9,7 +9,15 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.models.user import User, UserCredit, PendingCredit, CreditTransaction, ThemePreset
+from app.models.user import (
+    User,
+    UserCredit,
+    PendingCredit,
+    CreditTransaction,
+    ThemePreset,
+    Generation,
+    SiteVisit,
+)
 from app.api.deps import get_admin_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal"])
@@ -78,6 +86,121 @@ class AdminTransactionItem(BaseModel):
     action: str
     description: Optional[str]
     created_at: str
+
+
+class DailyMetricTrend(BaseModel):
+    date: str
+    visits: int
+    unique_visitors: int
+    generations: int
+
+
+class AdminMetricsOverviewResponse(BaseModel):
+    total_site_visits: int
+    live_visitors_today: int
+    total_images_generated: int
+    images_generated_today: int
+    daily_trends: List[DailyMetricTrend] = []
+
+
+@router.get("/metrics/overview", response_model=AdminMetricsOverviewResponse)
+async def get_admin_metrics_overview(
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns platform-wide live traffic and generation metrics:
+    1. Live users visiting today (distinct visitors today)
+    2. Images generated today
+    3. Total site visits (lifetime)
+    4. Total images generated till now (lifetime)
+    5. Daily activity trends for the past 7 days
+    """
+    now_utc = datetime.now(timezone.utc)
+    start_of_today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    seven_days_ago = start_of_today - timedelta(days=6)
+
+    # 1. Total Site Visits (lifetime)
+    total_visits_stmt = select(func.count(SiteVisit.id))
+    total_visits_res = await db.execute(total_visits_stmt)
+    total_site_visits = total_visits_res.scalar() or 0
+
+    # 2. Live Users Visiting Today (distinct visitor_ids today)
+    today_visitors_stmt = select(func.count(func.distinct(SiteVisit.visitor_id))).where(
+        SiteVisit.created_at >= start_of_today
+    )
+    today_visitors_res = await db.execute(today_visitors_stmt)
+    live_visitors_today = today_visitors_res.scalar() or 0
+
+    # 3. Total Images Generated (lifetime)
+    total_gens_stmt = select(func.count(Generation.id))
+    total_gens_res = await db.execute(total_gens_stmt)
+    total_images_generated = total_gens_res.scalar() or 0
+
+    # 4. Images Generated Today
+    today_gens_stmt = select(func.count(Generation.id)).where(
+        Generation.created_at >= start_of_today
+    )
+    today_gens_res = await db.execute(today_gens_stmt)
+    images_generated_today = today_gens_res.scalar() or 0
+
+    # 5. Past 7 days trends
+    # Fetch visits in the last 7 days
+    visits_trend_stmt = (
+        select(
+            func.date(SiteVisit.created_at).label("day"),
+            func.count(SiteVisit.id).label("visits"),
+            func.count(func.distinct(SiteVisit.visitor_id)).label("unique_visitors"),
+        )
+        .where(SiteVisit.created_at >= seven_days_ago)
+        .group_by(func.date(SiteVisit.created_at))
+    )
+    visits_trend_res = await db.execute(visits_trend_stmt)
+    visits_by_day: Dict[str, Dict[str, int]] = {}
+    for row in visits_trend_res.all():
+        day_key = str(row[0]) if row[0] is not None else ""
+        visits_by_day[day_key] = {
+            "visits": int(row[1] or 0),
+            "unique_visitors": int(row[2] or 0),
+        }
+
+    # Fetch generations in the last 7 days
+    gens_trend_stmt = (
+        select(
+            func.date(Generation.created_at).label("day"),
+            func.count(Generation.id).label("generations"),
+        )
+        .where(Generation.created_at >= seven_days_ago)
+        .group_by(func.date(Generation.created_at))
+    )
+    gens_trend_res = await db.execute(gens_trend_stmt)
+    gens_by_day: Dict[str, int] = {}
+    for row in gens_trend_res.all():
+        day_key = str(row[0]) if row[0] is not None else ""
+        gens_by_day[day_key] = int(row[1] or 0)
+
+    # Build ordered 7-day trend
+    daily_trends: List[DailyMetricTrend] = []
+    for i in range(6, -1, -1):
+        target_day = (start_of_today - timedelta(days=i)).strftime("%Y-%m-%d")
+        v_data = visits_by_day.get(target_day, {"visits": 0, "unique_visitors": 0})
+        g_count = gens_by_day.get(target_day, 0)
+        daily_trends.append(
+            DailyMetricTrend(
+                date=target_day,
+                visits=v_data["visits"],
+                unique_visitors=v_data["unique_visitors"],
+                generations=g_count,
+            )
+        )
+
+    return AdminMetricsOverviewResponse(
+        total_site_visits=total_site_visits,
+        live_visitors_today=live_visitors_today,
+        total_images_generated=total_images_generated,
+        images_generated_today=images_generated_today,
+        daily_trends=daily_trends,
+    )
 
 
 @router.post("/credits/assign")

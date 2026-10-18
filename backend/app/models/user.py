@@ -114,3 +114,17 @@ class ThemePreset(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class SiteVisit(Base):
+    __tablename__ = "site_visits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visitor_id = Column(String(64), index=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    path = Column(String(255), default="/", nullable=False)
+    referrer = Column(Text, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, nullable=False)
+
+    user = relationship("User")
+
+
