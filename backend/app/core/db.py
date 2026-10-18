@@ -66,6 +66,8 @@ async def init_db():
             "ALTER TABLE generations ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed BOOLEAN NOT NULL DEFAULT FALSE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed_at TIMESTAMPTZ;",
+            "CREATE INDEX IF NOT EXISTS ix_site_visits_created_at ON site_visits (created_at);",
+            "CREATE INDEX IF NOT EXISTS ix_site_visits_visitor_id ON site_visits (visitor_id);",
         ]:
             try:
                 await conn.execute(text(query))

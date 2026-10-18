@@ -25,8 +25,29 @@ import {
   Check,
   X,
   Image as ImageIcon,
+  Activity,
+  Eye,
+  Zap,
+  TrendingUp,
+  BarChart3,
+  Calendar,
 } from "lucide-react";
 import { useAuth, User } from "@/context/AuthContext";
+
+export interface DailyMetricTrend {
+  date: string;
+  visits: number;
+  unique_visitors: number;
+  generations: number;
+}
+
+export interface AdminMetricsOverview {
+  total_site_visits: number;
+  live_visitors_today: number;
+  total_images_generated: number;
+  images_generated_today: number;
+  daily_trends: DailyMetricTrend[];
+}
 
 interface AdminUserItem {
   id: string;
@@ -82,6 +103,7 @@ export default function AdminPage() {
   const [pendingList, setPendingList] = useState<PendingCreditItem[]>([]);
   const [transactionsList, setTransactionsList] = useState<TransactionItem[]>([]);
   const [themesList, setThemesList] = useState<AdminThemeItem[]>([]);
+  const [metricsData, setMetricsData] = useState<AdminMetricsOverview | null>(null);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
   // Form states
@@ -95,7 +117,7 @@ export default function AdminPage() {
   } | null>(null);
 
   // Filter & tab states
-  const [activeTab, setActiveTab] = useState<"users" | "pending" | "transactions" | "themes">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "pending" | "transactions" | "themes" | "activity">("users");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [themeSearchQuery, setThemeSearchQuery] = useState<string>("");
 
@@ -138,11 +160,12 @@ export default function AdminPage() {
 
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [usersRes, pendingRes, txRes, themesRes] = await Promise.all([
+      const [usersRes, pendingRes, txRes, themesRes, metricsRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/users`, { headers }),
         fetch(`${apiUrl}/api/admin/pending-credits`, { headers }),
         fetch(`${apiUrl}/api/admin/transactions`, { headers }),
         fetch(`${apiUrl}/api/admin/themes`, { headers }),
+        fetch(`${apiUrl}/api/admin/metrics/overview`, { headers }),
       ]);
 
       if (usersRes.ok) {
@@ -160,6 +183,10 @@ export default function AdminPage() {
       if (themesRes.ok) {
         const data = await themesRes.json();
         setThemesList(data);
+      }
+      if (metricsRes.ok) {
+        const data = await metricsRes.json();
+        setMetricsData(data);
       }
     } catch (err) {
       console.error("Error loading admin data:", err);
@@ -521,7 +548,121 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* KPI Summary Cards */}
+        {/* Platform Traffic & Generation Activity - Primary KPI Hero Grid */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              Traffic & Generation Activity
+            </h3>
+            <button
+              onClick={() => setActiveTab("activity")}
+              className="text-[11px] text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1 transition"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View 7-day breakdown</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Live Users Visiting Today */}
+            <div
+              onClick={() => setActiveTab("activity")}
+              className="bg-neutral-900/60 border border-emerald-500/30 hover:border-emerald-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-emerald-950/10 cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
+                <span className="group-hover:text-emerald-300 transition flex items-center gap-1.5 font-semibold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  Live Visitors Today
+                </span>
+                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-extrabold text-white tracking-tight">
+                {metricsData ? metricsData.live_visitors_today.toLocaleString() : "—"}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span>Unique daily visitors</span>
+                <span className="text-emerald-400 font-bold text-[10px] bg-emerald-500/10 px-1.5 py-0.5 rounded">Today</span>
+              </p>
+            </div>
+
+            {/* 2. Images Generated Per Day (Today) */}
+            <div
+              onClick={() => setActiveTab("activity")}
+              className="bg-neutral-900/60 border border-amber-500/30 hover:border-amber-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-amber-950/10 cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
+                <span className="group-hover:text-amber-300 transition flex items-center gap-1.5 font-semibold">
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  Images Generated Today
+                </span>
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-extrabold text-white tracking-tight">
+                {metricsData ? metricsData.images_generated_today.toLocaleString() : "—"}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span>Creations produced today</span>
+                <span className="text-amber-400 font-bold text-[10px] bg-amber-500/10 px-1.5 py-0.5 rounded">Today</span>
+              </p>
+            </div>
+
+            {/* 3. Total Site Visits */}
+            <div
+              onClick={() => setActiveTab("activity")}
+              className="bg-neutral-900/60 border border-sky-500/30 hover:border-sky-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-sky-950/10 cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
+                <span className="group-hover:text-sky-300 transition flex items-center gap-1.5 font-semibold">
+                  <Eye className="w-3.5 h-3.5 text-sky-400" />
+                  Total Site Visits
+                </span>
+                <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-extrabold text-white tracking-tight">
+                {metricsData ? metricsData.total_site_visits.toLocaleString() : "—"}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span>Total sessions recorded</span>
+                <span className="text-sky-400 font-bold text-[10px] bg-sky-500/10 px-1.5 py-0.5 rounded">Lifetime</span>
+              </p>
+            </div>
+
+            {/* 4. Total Images Generated Till Now */}
+            <div
+              onClick={() => setActiveTab("activity")}
+              className="bg-neutral-900/60 border border-rose-500/30 hover:border-rose-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-rose-950/10 cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
+                <span className="group-hover:text-rose-300 transition flex items-center gap-1.5 font-semibold">
+                  <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
+                  Total Images Generated
+                </span>
+                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  <Coins className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-extrabold text-white tracking-tight">
+                {metricsData ? metricsData.total_images_generated.toLocaleString() : "—"}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span>Portraits generated till now</span>
+                <span className="text-rose-400 font-bold text-[10px] bg-rose-500/10 px-1.5 py-0.5 rounded">Lifetime</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Accounts & Credits KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl">
             <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
@@ -727,6 +868,18 @@ export default function AdminPage() {
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Prompts & Themes ({themesList.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("activity")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeTab === "activity"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Activity & Trends</span>
               </button>
             </div>
 
@@ -1143,6 +1296,96 @@ export default function AdminPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 5: Daily Activity & Trends */}
+          {activeTab === "activity" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-emerald-400" />
+                    7-Day Activity & Growth Progression
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Daily breakdown of unique visitors, site sessions, and portrait generations.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-neutral-400 bg-neutral-950 px-2.5 py-1 rounded-lg border border-neutral-800">
+                    UTC Timezone
+                  </span>
+                </div>
+              </div>
+
+              {!metricsData || metricsData.daily_trends.length === 0 ? (
+                <div className="py-12 text-center text-neutral-500 text-xs">
+                  No activity recorded in the past 7 days yet.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-neutral-300">
+                    <thead className="bg-neutral-950/60 text-neutral-400 uppercase tracking-wider font-semibold border-b border-neutral-800">
+                      <tr>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4 text-center">Live Unique Visitors</th>
+                        <th className="py-3 px-4 text-center">Total Site Visits</th>
+                        <th className="py-3 px-4 text-center">Images Generated</th>
+                        <th className="py-3 px-4 text-right">Traffic Volume</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800/60 font-medium">
+                      {metricsData.daily_trends.map((item, idx) => {
+                        const isToday = idx === metricsData.daily_trends.length - 1;
+                        const maxVisits = Math.max(...metricsData.daily_trends.map((d) => d.visits), 1);
+                        const widthPct = Math.min(100, Math.round((item.visits / maxVisits) * 100));
+
+                        return (
+                          <tr key={item.date} className={`hover:bg-neutral-800/30 transition ${isToday ? "bg-emerald-950/15" : ""}`}>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-neutral-200">{item.date}</span>
+                                {isToday && (
+                                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded font-bold">
+                                    Today
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-bold text-emerald-300 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                <Users className="w-3 h-3" />
+                                {item.unique_visitors}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-bold text-sky-300 bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                                <Eye className="w-3 h-3" />
+                                {item.visits}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-bold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                <Zap className="w-3 h-3" />
+                                {item.generations}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="w-24 sm:w-32 bg-neutral-950 rounded-full h-2 overflow-hidden border border-neutral-800 ml-auto">
+                                <div
+                                  className="bg-gradient-to-r from-emerald-500 to-sky-500 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.max(widthPct, item.visits > 0 ? 10 : 0)}%` }}
+                                ></div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
