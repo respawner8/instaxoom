@@ -14,7 +14,10 @@ export const metadata: Metadata = {
   title: "CreatorBot | Daily AI Trends for Creators",
   description: "Generate viral AI portraits tailored for creators and social media using daily trends.",
   icons: {
-    icon: "/icon.svg",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
     apple: "/icon.svg",
   },
 };
