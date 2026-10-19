@@ -236,9 +236,11 @@ class AzureImageClient:
         Returns a tuple of (public_image_url, thumbnail_url).
         Raises HTTPException or Exception on failure.
         """
+        clean_prompt = prompt.strip().rstrip(".")
         edit_prompt = (
-            f"Transform the person in the photo into this portrait aesthetic while strictly preserving their face, "
-            f"facial structure, and likeness: {prompt}"
+            f"Preserve the exact face, facial features, bone structure, eye shape, nose, mouth contours, skin tone, and authentic likeness of the person in the photo with 100% fidelity. "
+            f"Do not alter or beautify their natural facial geometry. "
+            f"Only modify the wardrobe, background setting, and lighting aesthetic to match: {clean_prompt}."
         )
 
         # 1. Try using OpenAI AsyncOpenAI SDK
