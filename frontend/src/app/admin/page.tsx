@@ -463,24 +463,24 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-neutral-100 flex flex-col">
       {/* Top Header */}
-      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 sm:gap-4 shrink-0">
           <Link
             href="/"
-            className="flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800"
+            className="flex items-center gap-1.5 sm:gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition px-2.5 sm:px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>AI Studio</span>
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">AI Studio</span>
           </Link>
 
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-md shadow-rose-500/20">
+            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-md shadow-rose-500/20 shrink-0">
               <Shield className="w-4 h-4" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-lg tracking-tight">Admin Portal</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-extrabold text-base sm:text-lg tracking-tight">Admin Portal</span>
+                <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                   SUPERUSER
                 </span>
               </div>
@@ -488,7 +488,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2 text-xs text-neutral-300">
             {user.avatar_url ? (
               <img
@@ -497,11 +497,11 @@ export default function AdminPage() {
                 className="w-7 h-7 rounded-full border border-neutral-700"
               />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-300 font-bold">
+              <div className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-300 font-bold text-[11px]">
                 {user.email[0].toUpperCase()}
               </div>
             )}
-            <span className="hidden sm:inline font-medium">{user.email}</span>
+            <span className="hidden md:inline font-medium">{user.email}</span>
           </div>
 
           <button
@@ -509,7 +509,7 @@ export default function AdminPage() {
               logout();
               router.push("/");
             }}
-            className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-rose-400 transition px-2.5 py-1.5 rounded-lg hover:bg-neutral-900"
+            className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-rose-400 transition px-2 sm:px-2.5 py-1.5 rounded-lg hover:bg-neutral-900"
             title="Sign out"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -519,12 +519,12 @@ export default function AdminPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto w-full px-4 py-8 flex-1 space-y-8">
+      <main className="max-w-6xl mx-auto w-full px-3 sm:px-4 py-6 sm:py-8 flex-1 space-y-6 sm:space-y-8">
         
         {/* Global Action Notice */}
         {actionNotice && (
           <div
-            className={`p-4 rounded-2xl text-sm flex items-start justify-between gap-3 border shadow-lg transition-all ${
+            className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl text-sm flex items-start justify-between gap-3 border shadow-lg transition-all ${
               actionNotice.type === "success"
                 ? "bg-emerald-950/50 border-emerald-500/40 text-emerald-200"
                 : "bg-rose-950/50 border-rose-500/40 text-rose-200"
@@ -553,7 +553,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-2">
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
-              Traffic & Generation Activity
+              <span>Traffic & Generation Activity</span>
             </h3>
             <button
               onClick={() => setActiveTab("activity")}
@@ -564,175 +564,175 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* 1. Live Users Visiting Today */}
             <div
               onClick={() => setActiveTab("activity")}
-              className="bg-neutral-900/60 border border-emerald-500/30 hover:border-emerald-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-emerald-950/10 cursor-pointer"
+              className="bg-neutral-900/60 border border-emerald-500/30 hover:border-emerald-500/50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl transition group shadow-lg shadow-emerald-950/10 cursor-pointer"
             >
-              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-                <span className="group-hover:text-emerald-300 transition flex items-center gap-1.5 font-semibold">
-                  <span className="relative flex h-2 w-2">
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2 gap-1">
+                <span className="group-hover:text-emerald-300 transition flex items-center gap-1.5 font-semibold text-[11px] sm:text-xs truncate">
+                  <span className="relative flex h-2 w-2 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
                   Live Visitors Today
                 </span>
-                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Users className="w-4 h-4" />
+                <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                 {metricsData ? metricsData.live_visitors_today.toLocaleString() : "—"}
               </div>
-              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
-                <span>Unique daily visitors</span>
-                <span className="text-emerald-400 font-bold text-[10px] bg-emerald-500/10 px-1.5 py-0.5 rounded">Today</span>
+              <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span className="truncate pr-1">Unique daily visitors</span>
+                <span className="text-emerald-400 font-bold text-[9px] sm:text-[10px] bg-emerald-500/10 px-1.5 py-0.5 rounded shrink-0">Today</span>
               </p>
             </div>
 
             {/* 2. Images Generated Per Day (Today) */}
             <div
               onClick={() => setActiveTab("activity")}
-              className="bg-neutral-900/60 border border-amber-500/30 hover:border-amber-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-amber-950/10 cursor-pointer"
+              className="bg-neutral-900/60 border border-amber-500/30 hover:border-amber-500/50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl transition group shadow-lg shadow-amber-950/10 cursor-pointer"
             >
-              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-                <span className="group-hover:text-amber-300 transition flex items-center gap-1.5 font-semibold">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  Images Generated Today
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2 gap-1">
+                <span className="group-hover:text-amber-300 transition flex items-center gap-1.5 font-semibold text-[11px] sm:text-xs truncate">
+                  <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  Images Today
                 </span>
-                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  <Sparkles className="w-4 h-4" />
+                <div className="p-1 sm:p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                 {metricsData ? metricsData.images_generated_today.toLocaleString() : "—"}
               </div>
-              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
-                <span>Creations produced today</span>
-                <span className="text-amber-400 font-bold text-[10px] bg-amber-500/10 px-1.5 py-0.5 rounded">Today</span>
+              <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span className="truncate pr-1">Creations produced</span>
+                <span className="text-amber-400 font-bold text-[9px] sm:text-[10px] bg-amber-500/10 px-1.5 py-0.5 rounded shrink-0">Today</span>
               </p>
             </div>
 
             {/* 3. Total Site Visits */}
             <div
               onClick={() => setActiveTab("activity")}
-              className="bg-neutral-900/60 border border-sky-500/30 hover:border-sky-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-sky-950/10 cursor-pointer"
+              className="bg-neutral-900/60 border border-sky-500/30 hover:border-sky-500/50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl transition group shadow-lg shadow-sky-950/10 cursor-pointer"
             >
-              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-                <span className="group-hover:text-sky-300 transition flex items-center gap-1.5 font-semibold">
-                  <Eye className="w-3.5 h-3.5 text-sky-400" />
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2 gap-1">
+                <span className="group-hover:text-sky-300 transition flex items-center gap-1.5 font-semibold text-[11px] sm:text-xs truncate">
+                  <Eye className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                   Total Site Visits
                 </span>
-                <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                  <TrendingUp className="w-4 h-4" />
+                <div className="p-1 sm:p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+                  <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                 {metricsData ? metricsData.total_site_visits.toLocaleString() : "—"}
               </div>
-              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
-                <span>Total sessions recorded</span>
-                <span className="text-sky-400 font-bold text-[10px] bg-sky-500/10 px-1.5 py-0.5 rounded">Lifetime</span>
+              <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span className="truncate pr-1">Total sessions</span>
+                <span className="text-sky-400 font-bold text-[9px] sm:text-[10px] bg-sky-500/10 px-1.5 py-0.5 rounded shrink-0">Lifetime</span>
               </p>
             </div>
 
             {/* 4. Total Images Generated Till Now */}
             <div
               onClick={() => setActiveTab("activity")}
-              className="bg-neutral-900/60 border border-rose-500/30 hover:border-rose-500/50 rounded-2xl p-5 backdrop-blur-xl transition group shadow-lg shadow-rose-950/10 cursor-pointer"
+              className="bg-neutral-900/60 border border-rose-500/30 hover:border-rose-500/50 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl transition group shadow-lg shadow-rose-950/10 cursor-pointer"
             >
-              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-                <span className="group-hover:text-rose-300 transition flex items-center gap-1.5 font-semibold">
-                  <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
-                  Total Images Generated
+              <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2 gap-1">
+                <span className="group-hover:text-rose-300 transition flex items-center gap-1.5 font-semibold text-[11px] sm:text-xs truncate">
+                  <ImageIcon className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  Total Generations
                 </span>
-                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  <Coins className="w-4 h-4" />
+                <div className="p-1 sm:p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 shrink-0">
+                  <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">
+              <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                 {metricsData ? metricsData.total_images_generated.toLocaleString() : "—"}
               </div>
-              <p className="text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
-                <span>Portraits generated till now</span>
-                <span className="text-rose-400 font-bold text-[10px] bg-rose-500/10 px-1.5 py-0.5 rounded">Lifetime</span>
+              <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 flex items-center justify-between">
+                <span className="truncate pr-1">Portraits till now</span>
+                <span className="text-rose-400 font-bold text-[9px] sm:text-[10px] bg-rose-500/10 px-1.5 py-0.5 rounded shrink-0">Lifetime</span>
               </p>
             </div>
           </div>
         </div>
 
         {/* Accounts & Credits KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl">
-            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-              <span>Registered Users</span>
-              <Users className="w-4 h-4 text-rose-400" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl">
+            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-1.5 sm:mb-2">
+              <span className="truncate pr-1">Users</span>
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 shrink-0" />
             </div>
-            <div className="text-3xl font-extrabold text-white">{usersList.length}</div>
-            <p className="text-[11px] text-neutral-500 mt-1">Google OAuth registered accounts</p>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">{usersList.length}</div>
+            <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 truncate">Google OAuth accounts</p>
           </div>
 
           <div
             onClick={() => setActiveTab("themes")}
-            className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl cursor-pointer hover:border-rose-500/50 transition group"
+            className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl cursor-pointer hover:border-rose-500/50 transition group"
           >
-            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-              <span className="group-hover:text-rose-300 transition">Prompts & Themes</span>
-              <Sparkles className="w-4 h-4 text-rose-400" />
+            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-1.5 sm:mb-2">
+              <span className="group-hover:text-rose-300 transition truncate pr-1">Prompts & Themes</span>
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 shrink-0" />
             </div>
-            <div className="text-3xl font-extrabold text-white">{themesList.length}</div>
-            <p className="text-[11px] text-neutral-500 mt-1">
-              {themesList.filter((t) => t.is_active).length} active styles published
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">{themesList.length}</div>
+            <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 truncate">
+              {themesList.filter((t) => t.is_active).length} active styles
             </p>
           </div>
 
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl">
-            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-              <span>Circulating Credits</span>
-              <Coins className="w-4 h-4 text-amber-400" />
+          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl">
+            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-1.5 sm:mb-2">
+              <span className="truncate pr-1">Circulating Credits</span>
+              <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 shrink-0" />
             </div>
-            <div className="text-3xl font-extrabold text-white">{totalCreditsCirculating}</div>
-            <p className="text-[11px] text-neutral-500 mt-1">Live balances across all users</p>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">{totalCreditsCirculating}</div>
+            <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 truncate">Across all user balances</p>
           </div>
 
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl">
-            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-              <span>Pending Grants</span>
-              <Clock className="w-4 h-4 text-purple-400" />
+          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl">
+            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-1.5 sm:mb-2">
+              <span className="truncate pr-1">Pending Grants</span>
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400 shrink-0" />
             </div>
-            <div className="text-3xl font-extrabold text-white">{pendingList.length}</div>
-            <p className="text-[11px] text-neutral-500 mt-1">{totalPendingCredits} credits reserved</p>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">{pendingList.length}</div>
+            <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 truncate">{totalPendingCredits} reserved</p>
           </div>
 
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 backdrop-blur-xl col-span-2 sm:col-span-1">
-            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-2">
-              <span>Audit Records</span>
-              <History className="w-4 h-4 text-emerald-400" />
+          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-5 backdrop-blur-xl col-span-2 sm:col-span-1">
+            <div className="flex items-center justify-between text-neutral-400 text-xs font-medium mb-1.5 sm:mb-2">
+              <span className="truncate pr-1">Audit Records</span>
+              <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
             </div>
-            <div className="text-3xl font-extrabold text-white">{transactionsList.length}</div>
-            <p className="text-[11px] text-neutral-500 mt-1">Recent generation & grant events</p>
+            <div className="text-2xl sm:text-3xl font-extrabold text-white">{transactionsList.length}</div>
+            <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 truncate">Recent events logged</p>
           </div>
         </div>
 
         {/* Credit Assignment Form Card */}
-        <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl">
+        <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 backdrop-blur-xl shadow-2xl">
           <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-5 h-5 text-amber-400" />
-            <h2 className="text-xl font-bold">Assign Trial Credits</h2>
+            <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
+            <h2 className="text-lg sm:text-xl font-bold">Assign Trial Credits</h2>
           </div>
-          <p className="text-neutral-400 text-xs sm:text-sm mb-6">
+          <p className="text-neutral-400 text-xs sm:text-sm mb-5 sm:mb-6">
             Grant generation credits directly to any email. If the user hasn&apos;t signed up yet, credits are securely reserved in Neon PostgreSQL and automatically granted on their first Google login.
           </p>
 
-          <form onSubmit={handleAssignCredits} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <form onSubmit={handleAssignCredits} className="space-y-4 sm:space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
               
               {/* Email Input */}
               <div className="space-y-1.5 md:col-span-2">
                 <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-rose-400" />
-                  Recipient Email
+                  <Mail className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>Recipient Email</span>
                 </label>
                 <input
                   type="email"
@@ -740,15 +740,15 @@ export default function AdminPage() {
                   placeholder="e.g. colleague@company.com or creator@gmail.com"
                   value={assignEmail}
                   onChange={(e) => setAssignEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-rose-500/80 focus:ring-1 focus:ring-rose-500 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition"
+                  className="w-full px-3.5 sm:px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-rose-500/80 focus:ring-1 focus:ring-rose-500 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition"
                 />
               </div>
 
               {/* Credits Amount */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
-                  <Coins className="w-3.5 h-3.5 text-amber-400" />
-                  Credits (1 credit = 1 portrait)
+                  <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Credits</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -758,9 +758,9 @@ export default function AdminPage() {
                     required
                     value={assignCredits}
                     onChange={(e) => setAssignCredits(parseInt(e.target.value) || 1)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-amber-500/80 focus:ring-1 focus:ring-amber-500 text-sm text-neutral-100 outline-none transition"
+                    className="w-full px-3 sm:px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-amber-500/80 focus:ring-1 focus:ring-amber-500 text-sm text-neutral-100 outline-none transition"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     {[5, 10, 25].map((preset) => (
                       <button
                         type="button"
@@ -781,7 +781,7 @@ export default function AdminPage() {
             </div>
 
             {/* Note & Submit */}
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end">
               <div className="space-y-1.5 flex-1 w-full">
                 <label className="text-xs font-semibold text-neutral-300">
                   Grant Description / Note (Visible in Audit Log)
@@ -791,23 +791,23 @@ export default function AdminPage() {
                   placeholder="e.g. VIP Creator Trial Grant"
                   value={assignNote}
                   onChange={(e) => setAssignNote(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-neutral-700 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition"
+                  className="w-full px-3.5 sm:px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 focus:border-neutral-700 text-sm text-neutral-100 placeholder-neutral-600 outline-none transition"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting || !assignEmail.trim()}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:from-amber-600 hover:via-rose-600 hover:to-purple-700 text-white font-semibold text-sm transition shadow-lg shadow-rose-500/25 disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:from-amber-600 hover:via-rose-600 hover:to-purple-700 text-white font-semibold text-sm transition shadow-lg shadow-rose-500/25 disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
               >
                 {isSubmitting ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
                     <span>Processing...</span>
                   </>
                 ) : (
                   <>
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4 shrink-0" />
                     <span>Grant Credits</span>
                   </>
                 )}
@@ -817,101 +817,101 @@ export default function AdminPage() {
         </div>
 
         {/* Tabbed Data Section */}
-        <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-6">
+        <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 backdrop-blur-xl shadow-2xl space-y-5 sm:space-y-6">
           
           {/* Header & Tabs */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800/80 pb-4">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-col gap-3.5 border-b border-neutral-800/80 pb-4">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar -mx-1 px-1 sm:mx-0 sm:px-0">
               <button
                 onClick={() => setActiveTab("users")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === "users"
                     ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-3.5 h-3.5 shrink-0" />
                 <span>Users ({usersList.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("pending")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === "pending"
                     ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Pending Grants ({pendingList.length})</span>
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>Pending ({pendingList.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("transactions")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === "transactions"
                     ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <History className="w-3.5 h-3.5" />
+                <History className="w-3.5 h-3.5 shrink-0" />
                 <span>Audit Log</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("themes")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === "themes"
                     ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/20"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>Prompts & Themes ({themesList.length})</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("activity")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                   activeTab === "activity"
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <BarChart3 className="w-3.5 h-3.5" />
+                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
                 <span>Activity & Trends</span>
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap w-full justify-between sm:justify-end">
               {activeTab === "users" && (
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-initial">
                   <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-3" />
                   <input
                     type="text"
                     placeholder="Search by email or name..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-48 sm:w-60 focus:border-neutral-700"
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-full sm:w-60 focus:border-neutral-700"
                   />
                 </div>
               )}
 
               {activeTab === "themes" && (
-                <div className="flex items-center gap-2">
-                  <div className="relative">
+                <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                  <div className="relative flex-1 sm:flex-initial">
                     <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-3" />
                     <input
                       type="text"
                       placeholder="Filter prompts or themes..."
                       value={themeSearchQuery}
                       onChange={(e) => setThemeSearchQuery(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-44 sm:w-56 focus:border-neutral-700"
+                      className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-full sm:w-56 focus:border-neutral-700"
                     />
                   </div>
                   <button
                     onClick={openCreateThemeModal}
-                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-rose-500 to-purple-600 hover:from-rose-600 hover:to-purple-700 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-md shadow-rose-500/20 whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-rose-500 to-purple-600 hover:from-rose-600 hover:to-purple-700 text-white font-semibold text-xs flex items-center gap-1.5 transition shadow-md shadow-rose-500/20 whitespace-nowrap shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>New Prompt</span>
@@ -922,7 +922,7 @@ export default function AdminPage() {
               <button
                 onClick={loadAdminData}
                 disabled={isLoadingData}
-                className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition"
+                className="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition shrink-0 ml-auto sm:ml-0"
                 title="Refresh Table"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingData ? "animate-spin text-rose-400" : ""}`} />
@@ -932,8 +932,8 @@ export default function AdminPage() {
 
           {/* Tab 1: Registered Users */}
           {activeTab === "users" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-neutral-300">
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs text-neutral-300 min-w-[620px]">
                 <thead className="bg-neutral-950/60 text-neutral-400 uppercase tracking-wider font-semibold border-b border-neutral-800">
                   <tr>
                     <th className="py-3 px-4">User</th>
@@ -1021,8 +1021,8 @@ export default function AdminPage() {
 
           {/* Tab 2: Pending Invitations */}
           {activeTab === "pending" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-neutral-300">
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs text-neutral-300 min-w-[550px]">
                 <thead className="bg-neutral-950/60 text-neutral-400 uppercase tracking-wider font-semibold border-b border-neutral-800">
                   <tr>
                     <th className="py-3 px-4">Reserved Email</th>
@@ -1068,8 +1068,8 @@ export default function AdminPage() {
 
           {/* Tab 3: Transactions Audit Log */}
           {activeTab === "transactions" && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-neutral-300">
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs text-neutral-300 min-w-[620px]">
                 <thead className="bg-neutral-950/60 text-neutral-400 uppercase tracking-wider font-semibold border-b border-neutral-800">
                   <tr>
                     <th className="py-3 px-4">Timestamp</th>
@@ -1326,8 +1326,8 @@ export default function AdminPage() {
                   No activity recorded in the past 7 days yet.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-neutral-300">
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left text-xs text-neutral-300 min-w-[620px]">
                     <thead className="bg-neutral-950/60 text-neutral-400 uppercase tracking-wider font-semibold border-b border-neutral-800">
                       <tr>
                         <th className="py-3 px-4">Date</th>
@@ -1395,8 +1395,8 @@ export default function AdminPage() {
 
         {/* Create / Edit Theme Modal */}
         {isThemeModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto space-y-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <div className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 sm:p-8 shadow-2xl max-h-[92vh] overflow-y-auto space-y-5 sm:space-y-6">
               
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
@@ -1594,11 +1594,11 @@ export default function AdminPage() {
                 </div>
 
                 {/* Submit Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-800">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 pt-4 border-t border-neutral-800">
                   <button
                     type="button"
                     onClick={() => setIsThemeModalOpen(false)}
-                    className="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition"
+                    className="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition text-center"
                   >
                     Cancel
                   </button>
@@ -1606,7 +1606,7 @@ export default function AdminPage() {
                   <button
                     type="submit"
                     disabled={isSubmittingTheme}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 hover:from-rose-600 hover:via-pink-600 hover:to-purple-700 text-white font-semibold text-xs transition shadow-lg shadow-rose-500/25 disabled:opacity-50 flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 via-pink-500 to-purple-600 hover:from-rose-600 hover:via-pink-600 hover:to-purple-700 text-white font-semibold text-xs transition shadow-lg shadow-rose-500/25 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {isSubmittingTheme ? (
                       <>

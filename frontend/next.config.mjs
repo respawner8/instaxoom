@@ -19,6 +19,8 @@ const nextConfig = {
         fs: false,
         encoding: false,
       };
+    } else {
+      config.externals = [...(config.externals || []), "encoding"];
     }
     return config;
   },

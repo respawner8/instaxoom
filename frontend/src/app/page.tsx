@@ -758,19 +758,19 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0a0a0c] text-neutral-100 flex flex-col">
       {/* Top Navigation */}
-      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-4 sm:px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+      <header className="border-b border-neutral-800/80 backdrop-blur-md sticky top-0 z-50 bg-[#0a0a0c]/80 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <img
             src="/icon.svg"
             alt="CreatorBot Logo"
-            className="w-8 h-8 rounded-xl shadow-lg shadow-rose-500/20"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl shadow-lg shadow-rose-500/20"
           />
-          <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
+          <span className="font-extrabold text-lg sm:text-xl tracking-tight bg-gradient-to-r from-white via-neutral-200 to-neutral-400 bg-clip-text text-transparent">
             CreatorBot
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 border border-neutral-800 text-xs font-medium text-neutral-200 shadow-sm">
             <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400" : "bg-emerald-400"} animate-pulse`} />
             <Sparkles className="w-3.5 h-3.5 text-rose-400" />
@@ -778,17 +778,18 @@ export default function Home() {
           </div>
 
           {user ? (
-            <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap justify-end">
               {/* My Images Gallery Button */}
               <button
                 onClick={() => setIsMyImagesOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:bg-purple-500/25 transition text-xs font-bold shadow-sm"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:bg-purple-500/25 transition text-xs font-bold shadow-sm"
                 title="View your saved portrait generations"
               >
-                <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
-                <span>My Images</span>
+                <ImageIcon className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <span className="hidden sm:inline">My Images</span>
+                <span className="sm:hidden">Gallery</span>
                 {myGenerations.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-purple-500/30 text-[10px] text-purple-200">
+                  <span className="px-1.5 py-0.5 rounded-full bg-purple-500/30 text-[10px] text-purple-200">
                     {myGenerations.length}
                   </span>
                 )}
@@ -796,11 +797,13 @@ export default function Home() {
 
               {/* Live Credit Badge */}
               <div
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shadow-sm"
                 title={`${user.credits} image generation credit${user.credits === 1 ? "" : "s"} available`}
               >
-                <Coins className="w-3.5 h-3.5 text-amber-400" />
-                <span>{user.credits} Credit{user.credits === 1 ? "" : "s"}</span>
+                <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>
+                  {user.credits} <span className="hidden sm:inline">Credit{user.credits === 1 ? "" : "s"}</span>
+                </span>
               </div>
 
               {/* Claim 5 Free Credits Button */}
@@ -808,15 +811,16 @@ export default function Home() {
                 <button
                   onClick={handleClaimFreeCredits}
                   disabled={isClaimingCredits}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:opacity-90 text-white transition text-xs font-extrabold shadow-md shadow-rose-500/25 active:scale-95 animate-pulse hover:animate-none"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:opacity-90 text-white transition text-xs font-extrabold shadow-md shadow-rose-500/25 active:scale-95 animate-pulse hover:animate-none"
                   title="Claim your 5 free lifetime credits"
                 >
                   {isClaimingCredits ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
                   ) : (
-                    <Gift className="w-3.5 h-3.5 text-white" />
+                    <Gift className="w-3.5 h-3.5 text-white shrink-0" />
                   )}
-                  <span>{isClaimingCredits ? "Claiming..." : "Claim 5 Free Credits"}</span>
+                  <span className="hidden sm:inline">{isClaimingCredits ? "Claiming..." : "Claim 5 Free Credits"}</span>
+                  <span className="sm:hidden">{isClaimingCredits ? "Claiming..." : "Claim 5"}</span>
                 </button>
               )}
 
@@ -824,15 +828,17 @@ export default function Home() {
               {user.role === "admin" && (
                 <Link
                   href="/admin"
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25 transition text-xs font-bold shadow-sm"
+                  aria-label="Admin Portal"
+                  title="Admin Portal"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25 transition text-xs font-bold shadow-sm"
                 >
-                  <Shield className="w-3.5 h-3.5 text-rose-400" />
+                  <Shield className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                   <span className="hidden sm:inline">Admin Portal</span>
                 </Link>
               )}
 
               {/* User Avatar & Logout */}
-              <div className="flex items-center gap-2 pl-1 border-l border-neutral-800">
+              <div className="flex items-center gap-1.5 sm:gap-2 pl-1 border-l border-neutral-800">
                 {user.avatar_url ? (
                   <img
                     src={user.avatar_url}
@@ -863,13 +869,15 @@ export default function Home() {
                 <Gift className="w-3.5 h-3.5 text-rose-400" />
                 <span>Sign in to Claim 5 Free Credits</span>
               </span>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setErrorMessage("Google login failed")}
-                theme="filled_black"
-                shape="pill"
-                size="medium"
-              />
+              <div className="scale-90 sm:scale-100 origin-right">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => setErrorMessage("Google login failed")}
+                  theme="filled_black"
+                  shape="pill"
+                  size="medium"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -877,21 +885,21 @@ export default function Home() {
 
 
       {/* Hero / Header */}
-      <div className="max-w-4xl mx-auto w-full px-4 pt-10 pb-16 flex-1 flex flex-col items-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-xs font-semibold mb-6">
-          <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+      <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 pt-6 sm:pt-10 pb-16 flex-1 flex flex-col items-center">
+        <div className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/20 text-rose-300 text-[11px] sm:text-xs font-semibold mb-4 sm:mb-6 text-center">
+          <Sparkles className="w-3.5 h-3.5 text-rose-400 animate-pulse shrink-0" />
           <span>AI PORTRAIT GENERATOR &bull; DAILY INSTAGRAM TRENDS</span>
         </div>
 
-        <h1 className="text-4xl md:text-5xl font-black text-center tracking-tight mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-center tracking-tight mb-3 sm:mb-4 max-w-2xl bg-gradient-to-b from-white to-neutral-400 bg-clip-text text-transparent px-2">
           {selectedTheme.title}
         </h1>
-        <p className="text-neutral-400 text-center text-sm md:text-base max-w-xl mb-10 leading-relaxed">
+        <p className="text-neutral-400 text-center text-xs sm:text-sm md:text-base max-w-xl mb-8 sm:mb-10 leading-relaxed px-2">
           {selectedTheme.tagline}
         </p>
 
         {/* Main Generator Card */}
-        <div className="w-full bg-neutral-900/60 border border-neutral-800/90 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-2xl space-y-8">
+        <div className="w-full bg-neutral-900/60 border border-neutral-800/90 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 backdrop-blur-xl shadow-2xl space-y-6 sm:space-y-8">
           
           {/* Step 1: Photo Upload */}
           <div>
@@ -908,7 +916,7 @@ export default function Home() {
               </span>
             </div>
 
-            <div className="border-2 border-dashed border-neutral-800 hover:border-neutral-700 transition rounded-2xl p-6 text-center bg-neutral-950/40 relative cursor-pointer">
+            <div className="border-2 border-dashed border-neutral-800 hover:border-neutral-700 transition rounded-2xl p-4 sm:p-6 text-center bg-neutral-950/40 relative cursor-pointer">
               <input
                 type="file"
                 multiple={!isAzure}
@@ -946,9 +954,9 @@ export default function Home() {
 
             {/* Detected Gender Badge & Manual Override */}
             {detectedGender && (
-              <div className="mt-3 p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-emerald-400" />
+              <div className="mt-3 p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span className="text-xs font-semibold text-neutral-200">
                     Auto-Detected Subject:
                   </span>
@@ -956,7 +964,7 @@ export default function Home() {
                     {detectedGender} {genderConfidence ? `(${genderConfidence}%)` : ""}
                   </span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5 self-end sm:self-auto">
                   <button
                     type="button"
                     onClick={() => setDetectedGender("male")}
@@ -985,11 +993,11 @@ export default function Home() {
 
             {/* Upload Previews */}
             {previewUrls.length > 0 && (
-              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+              <div className="flex gap-3 mt-4 overflow-x-auto pb-2 no-scrollbar">
                 {previewUrls.map((url, idx) => (
                   <div key={idx} className="relative w-20 h-24 rounded-xl overflow-hidden border border-neutral-700 flex-shrink-0 group shadow-md">
                     <img src={url} alt={`Upload ${idx + 1}`} className="w-full h-full object-cover" />
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-xs py-0.5 text-[9px] text-center text-rose-300 font-medium">
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 backdrop-blur-sm py-0.5 text-[9px] text-center text-rose-300 font-medium">
                       4:5 Crop
                     </div>
                     <button
@@ -1010,7 +1018,7 @@ export default function Home() {
             <label className="block text-sm font-semibold text-neutral-200 mb-3">
               2. Select Aesthetic Theme
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3">
               {themes.map((theme) => {
                 const isActive = theme.id === selectedTheme.id;
                 return (
@@ -1018,7 +1026,7 @@ export default function Home() {
                     key={theme.id}
                     type="button"
                     onClick={() => handleThemeSelect(theme)}
-                    className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
+                    className={`p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
                       isActive
                         ? "border-rose-500 bg-rose-500/10 shadow-lg shadow-rose-500/10 scale-[1.02]"
                         : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-700 hover:bg-neutral-900/60"
@@ -1028,7 +1036,7 @@ export default function Home() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
                         {theme.category}
                       </span>
-                      <div className="font-semibold text-sm text-white mt-1 leading-snug">
+                      <div className="font-semibold text-xs sm:text-sm text-white mt-1 leading-snug line-clamp-2">
                         {theme.title}
                       </div>
                     </div>
@@ -1045,10 +1053,10 @@ export default function Home() {
           </div>
 
           {/* Step 3: Editable Prompt Box (Dev Mode) */}
-          <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-950/60 space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="p-4 sm:p-5 rounded-xl sm:rounded-2xl border border-neutral-800 bg-neutral-950/60 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-amber-400" />
+                <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>3. Customize Prompt (Dev & Prompt Tweaker)</span>
               </label>
               {isPromptEdited && (
@@ -1076,14 +1084,14 @@ export default function Home() {
             />
 
             {/* Quick Keyword Modifier Chips */}
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="text-[11px] text-neutral-500 self-center mr-1">Quick Add:</span>
+            <div className="flex flex-wrap gap-1.5 pt-1 items-center">
+              <span className="text-[11px] text-neutral-500 mr-1">Quick Add:</span>
               {SUGGESTED_MODIFIERS.map((mod, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => handleAddModifier(mod)}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[11px] text-neutral-300 transition"
+                  className="px-2 sm:px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[10px] sm:text-[11px] text-neutral-300 transition"
                 >
                   + {mod}
                 </button>
@@ -1096,7 +1104,7 @@ export default function Home() {
             <label className="block text-sm font-semibold text-neutral-200 mb-3">
               4. Instagram Aspect Ratio
             </label>
-            <div className="p-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 text-white flex items-center justify-between shadow-lg shadow-rose-500/5">
+            <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-rose-500/40 bg-rose-500/10 text-white flex items-center justify-between shadow-lg shadow-rose-500/5 gap-3">
               <div>
                 <div className="font-semibold text-sm flex items-center gap-2">
                   <span>Feed Portrait (4:5)</span>
@@ -1106,7 +1114,7 @@ export default function Home() {
                   864 × 1080 &bull; Maximizes screen engagement in the Instagram mobile feed
                 </div>
               </div>
-              <div className="h-9 w-7 rounded border border-rose-400/40 bg-rose-500/20 flex items-center justify-center text-[10px] font-mono text-rose-200">
+              <div className="h-9 w-7 rounded border border-rose-400/40 bg-rose-500/20 flex items-center justify-center text-[10px] font-mono text-rose-200 shrink-0">
                 4:5
               </div>
             </div>
@@ -1122,7 +1130,7 @@ export default function Home() {
             )}
 
             {!user ? (
-              <div className="p-4 rounded-2xl border border-neutral-800 bg-neutral-950/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="p-4 rounded-xl sm:rounded-2xl border border-neutral-800 bg-neutral-950/60 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-amber-500/20 via-rose-500/20 to-purple-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
                     <Gift className="w-5 h-5" />
@@ -1132,7 +1140,7 @@ export default function Home() {
                     <div className="text-xs text-neutral-400">1 image = 1 credit. New accounts can claim 5 free starter credits.</div>
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 w-full sm:w-auto flex justify-center">
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}
                     onError={() => setErrorMessage("Google Sign-in was cancelled or failed.")}
@@ -1144,7 +1152,7 @@ export default function Home() {
               </div>
             ) : user.credits < 1 ? (
               !user.free_credits_claimed ? (
-                <div className="p-4 rounded-2xl border border-rose-500/40 bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 text-rose-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="p-4 rounded-xl sm:rounded-2xl border border-rose-500/40 bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 text-rose-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center shrink-0 shadow-md shadow-rose-500/20">
                       <Gift className="w-5 h-5 text-white" />
@@ -1159,7 +1167,7 @@ export default function Home() {
                   <button
                     onClick={handleClaimFreeCredits}
                     disabled={isClaimingCredits}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-purple-600 hover:opacity-90 text-white font-bold text-xs whitespace-nowrap shadow-lg shadow-rose-500/20 transition flex items-center gap-1.5 shrink-0 active:scale-95"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-purple-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-rose-500/20 transition flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
                   >
                     {isClaimingCredits ? (
                       <>
@@ -1175,7 +1183,7 @@ export default function Home() {
                   </button>
                 </div>
               ) : (
-                <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="p-4 rounded-xl sm:rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <Coins className="w-6 h-6 text-amber-400 shrink-0" />
                     <div>
@@ -1188,7 +1196,7 @@ export default function Home() {
                   {user.role === "admin" && (
                     <Link
                       href="/admin"
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-bold text-xs whitespace-nowrap hover:bg-amber-400 transition"
+                      className="w-full sm:w-auto text-center px-4 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs whitespace-nowrap hover:bg-amber-400 transition"
                     >
                       Grant Myself Credits &rarr;
                     </Link>
@@ -1207,7 +1215,7 @@ export default function Home() {
                 cooldownSeconds > 0
               }
               onClick={handleGenerate}
-              className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 text-base transition-all shadow-xl ${
+              className={`w-full py-3.5 sm:py-4 px-3 sm:px-4 rounded-xl sm:rounded-2xl font-bold flex items-center justify-center gap-2 text-sm sm:text-base transition-all shadow-xl ${
                 !user || user.credits < 1
                   ? "bg-neutral-800/60 text-neutral-500 border border-neutral-800 cursor-not-allowed"
                   : cooldownSeconds > 0
@@ -1247,19 +1255,22 @@ export default function Home() {
                 </>
               ) : !user ? (
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5" />
+                  <Sparkles className="w-5 h-5 shrink-0" />
                   <span>Sign in with Google to Generate</span>
                 </div>
               ) : user.credits < 1 ? (
                 <div className="flex items-center gap-2">
-                  <Coins className="w-5 h-5 text-neutral-500" />
+                  <Coins className="w-5 h-5 text-neutral-500 shrink-0" />
                   <span>0 Credits Remaining (Trial Required)</span>
                 </div>
               ) : (
                 <>
-                  <Sparkles className="w-5 h-5" />
-                  <span>
+                  <Sparkles className="w-5 h-5 shrink-0" />
+                  <span className="hidden sm:inline">
                     Generate {selectedTheme.title} Portrait &bull; 1 Credit ({user.credits} left)
+                  </span>
+                  <span className="sm:hidden">
+                    Generate {selectedTheme.title} &bull; 1 Credit
                   </span>
                 </>
               )}
@@ -1268,8 +1279,8 @@ export default function Home() {
 
             {/* Live Queue Progress Card during generation */}
             {isGenerating && isAzure && (
-              <div className="p-4 rounded-2xl bg-neutral-950/90 border border-sky-500/30 shadow-xl space-y-2.5 backdrop-blur-md">
-                <div className="flex items-center justify-between text-xs">
+              <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-neutral-950/90 border border-sky-500/30 shadow-xl space-y-2.5 backdrop-blur-md">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2 font-semibold">
                     {liveQueuePosition !== null && liveQueuePosition > 0 ? (
                       <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
@@ -1293,7 +1304,7 @@ export default function Home() {
                         : "Rendering lighting, atmosphere & portrait details..."}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-sky-300 font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-sky-950/80 border border-sky-800/60">
+                  <div className="flex items-center gap-1 text-sky-300 font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-sky-950/80 border border-sky-800/60 self-start sm:self-auto">
                     <Clock className="w-3.5 h-3.5 text-sky-400" />
                     <span>~{liveEstSeconds}s</span>
                   </div>
@@ -1312,8 +1323,8 @@ export default function Home() {
             )}
 
             {isAzure && !isGenerating && (
-              <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 pt-1">
-                <span className={`w-2 h-2 rounded-full ${queueStatus?.total_in_queue ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
+              <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 pt-1 text-center">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${queueStatus?.total_in_queue ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
                 <span>
                   Live Queue: <strong className="text-neutral-200">{queueStatus ? queueStatus.status_text : "Ready (0 waiting)"}</strong>
                 </span>
@@ -1331,13 +1342,13 @@ export default function Home() {
 
           {/* Output Preview & Instagram Export */}
           {generatedImage && (
-            <div className="mt-10 pt-8 border-t border-neutral-800 flex flex-col items-center">
-              <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold mb-4">
-                <CheckCircle2 className="w-4 h-4" />
+            <div className="mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-neutral-800 flex flex-col items-center w-full">
+              <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold mb-4 text-center">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{selectedTheme.title} Ready!</span>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-neutral-800 shadow-2xl relative bg-black w-[300px] h-[375px]">
+              <div className="overflow-hidden rounded-2xl border border-neutral-800 shadow-2xl relative bg-black w-[280px] sm:w-[320px] aspect-[4/5] max-w-full">
                 <img
                   src={generatedImage}
                   alt="Generated Instagram Trend"
@@ -1346,12 +1357,12 @@ export default function Home() {
               </div>
 
               {/* Action Buttons: Save & Social Sharing */}
-              <div className="flex flex-col gap-3 w-full max-w-sm mt-6">
+              <div className="flex flex-col gap-2.5 sm:gap-3 w-full max-w-sm mt-6 px-1">
                 <button
                   type="button"
                   disabled={isSaving}
                   onClick={handleSaveToDevice}
-                  className={`w-full py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 text-sm transition shadow-lg ${
+                  className={`w-full py-3 sm:py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 text-xs sm:text-sm transition shadow-lg ${
                     saveSuccess
                       ? "bg-emerald-600 text-white"
                       : "bg-white text-black hover:bg-neutral-200 active:scale-[0.99]"
@@ -1375,17 +1386,17 @@ export default function Home() {
                   )}
                 </button>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                   <button
                     type="button"
                     disabled={isSharingInstagram}
                     onClick={handleShareToInstagram}
-                    className="py-3 px-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white flex items-center justify-center gap-2 hover:opacity-95 text-xs sm:text-sm shadow-md shadow-purple-500/20 active:scale-[0.98] transition"
+                    className="py-2.5 sm:py-3 px-2 sm:px-3 rounded-xl font-semibold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white flex items-center justify-center gap-1.5 sm:gap-2 hover:opacity-95 text-xs sm:text-sm shadow-md shadow-purple-500/20 active:scale-[0.98] transition truncate"
                   >
                     {isSharingInstagram ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
                     ) : (
-                      <Instagram className="w-4 h-4" />
+                      <Instagram className="w-4 h-4 shrink-0" />
                     )}
                     <span>Instagram</span>
                   </button>
@@ -1394,12 +1405,12 @@ export default function Home() {
                     type="button"
                     disabled={isSharingWhatsApp}
                     onClick={handleShareToWhatsApp}
-                    className="py-3 px-3 rounded-xl font-semibold bg-[#25D366] hover:bg-[#20ba5a] text-white flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md shadow-emerald-500/20 active:scale-[0.98] transition"
+                    className="py-2.5 sm:py-3 px-2 sm:px-3 rounded-xl font-semibold bg-[#25D366] hover:bg-[#20ba5a] text-white flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm shadow-md shadow-emerald-500/20 active:scale-[0.98] transition truncate"
                   >
                     {isSharingWhatsApp ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
                     ) : (
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
                         <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
                       </svg>
                     )}

@@ -186,7 +186,7 @@ export default function MyImagesModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
       onClick={() => {
         if (selectedImage) {
           setSelectedImage(null);
@@ -197,30 +197,31 @@ export default function MyImagesModal({
     >
       {/* Modal Dialog Container */}
       <div
-        className="bg-[#121217] border border-neutral-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative"
+        className="bg-[#121217] border border-neutral-800 rounded-xl sm:rounded-2xl w-full max-w-5xl max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Dynamic Header depending on whether inspecting a specific image or browsing the gallery */}
         {selectedImage ? (
           /* Detail View Header */
-          <div className="px-5 py-3.5 border-b border-neutral-800/80 flex items-center justify-between bg-neutral-900/80 backdrop-blur-md sticky top-0 z-10">
+          <div className="px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-neutral-800/80 flex items-center justify-between bg-neutral-900/80 backdrop-blur-md sticky top-0 z-10 gap-2">
             <button
               onClick={() => setSelectedImage(null)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/60 text-xs font-semibold transition"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/60 text-xs font-semibold transition shrink-0"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Gallery</span>
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Back to Gallery</span>
+              <span className="sm:hidden">Back</span>
             </button>
 
-            <div className="text-center">
-              <h3 className="text-sm font-bold text-white truncate max-w-[200px] sm:max-w-md">
+            <div className="text-center min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-[140px] sm:max-w-md">
                 {selectedImage.theme_title || "Portrait Details"}
               </h3>
             </div>
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition"
+              className="p-1.5 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition shrink-0"
               title="Close (Esc)"
             >
               <X className="w-4 h-4" />
@@ -228,39 +229,39 @@ export default function MyImagesModal({
           </div>
         ) : (
           /* Gallery Grid Header */
-          <div className="px-5 py-4 border-b border-neutral-800/80 flex items-center justify-between bg-neutral-900/80 backdrop-blur-md sticky top-0 z-10">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400">
-                <ImageIcon className="w-5 h-5" />
+          <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-neutral-800/80 flex items-center justify-between bg-neutral-900/80 backdrop-blur-md sticky top-0 z-10 gap-2">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+              <div className="p-1.5 sm:p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 shrink-0">
+                <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">My Generations</h2>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h2 className="text-sm sm:text-lg font-bold text-white tracking-tight truncate">My Generations</h2>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30 shrink-0">
                     {generations.length}
                   </span>
                 </div>
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-neutral-400 hidden sm:block">
                   Your high-resolution AI portraits saved in durable cloud storage
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 onClick={onRefresh}
                 disabled={isLoading}
                 title="Refresh gallery"
-                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition disabled:opacity-50"
+                className="p-1.5 sm:p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-purple-400" : ""}`} />
+                <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLoading ? "animate-spin text-purple-400" : ""}`} />
               </button>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition"
+                className="p-1.5 sm:p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-800/60 hover:bg-neutral-800 border border-neutral-700/60 transition"
                 title="Close (Esc)"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             </div>
           </div>
@@ -468,8 +469,8 @@ export default function MyImagesModal({
                         />
                       )}
 
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-90 group-hover:opacity-100 transition flex flex-col justify-between p-2.5 sm:p-3 pointer-events-none">
+                      {/* Hover / Touch Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent sm:from-black/90 sm:via-black/20 sm:opacity-90 sm:group-hover:opacity-100 transition flex flex-col justify-between p-2 sm:p-3 pointer-events-none">
                         {/* Top Badges */}
                         <div className="flex items-center justify-between pointer-events-auto">
                           <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/10">
@@ -488,11 +489,11 @@ export default function MyImagesModal({
                             {item.theme_title || "Custom Portrait"}
                           </p>
                           <div className="flex items-center justify-between text-[10px] text-neutral-400 mt-0.5">
-                            <span>{formatDate(item.created_at)}</span>
+                            <span className="truncate pr-1">{formatDate(item.created_at)}</span>
 
                             {/* Quick Action Buttons */}
                             <div
-                              className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                              className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               {!isBroken && (
