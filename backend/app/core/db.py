@@ -74,6 +74,23 @@ async def init_db():
             except Exception as e:
                 logger.warning("Schema migration notice (%s): %s", query, e)
 
+        # Synchronize admin roles for all configured ADMIN_EMAILS
+        admin_emails = settings.admin_emails_list
+        if admin_emails:
+            try:
+                from app.models.user import User
+                from sqlalchemy import update, func
+                sync_stmt = (
+                    update(User)
+                    .where(func.lower(User.email).in_(admin_emails), User.role != "admin")
+                    .values(role="admin")
+                )
+                res = await conn.execute(sync_stmt)
+                if res.rowcount:
+                    logger.info("Auto-synced %d users to admin role based on ADMIN_EMAILS.", res.rowcount)
+            except Exception as e:
+                logger.warning("Admin role sync notice: %s", e)
+
     # Seed default themes if theme_presets table is empty
     try:
         from app.models.user import ThemePreset

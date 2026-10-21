@@ -18,6 +18,7 @@ from app.models.user import (
     Generation,
     SiteVisit,
 )
+from app.core.config import settings
 from app.api.deps import get_admin_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal"])
@@ -295,6 +296,7 @@ async def list_users(
     )
     res = await db.execute(stmt)
     users = res.scalars().all()
+    admin_emails_set = set(settings.admin_emails_list)
 
     return [
         {
@@ -302,7 +304,7 @@ async def list_users(
             "email": u.email,
             "name": u.name or u.email.split("@")[0],
             "avatar_url": u.avatar_url,
-            "role": u.role,
+            "role": "admin" if (u.role == "admin" or (u.email or "").strip().lower() in admin_emails_set) else u.role,
             "credits": u.credit.balance if u.credit else 0,
             "free_credits_claimed": bool(u.free_credits_claimed),
             "created_at": u.created_at.isoformat() if u.created_at else "",
