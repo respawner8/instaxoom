@@ -14,6 +14,7 @@ from sqlalchemy import select, desc
 
 from app.services.comfy_client import comfy_client
 from app.services.azure_image_client import azure_image_client
+from app.services.storage_service import storage_service
 from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.api.deps import get_current_user, get_current_user_optional
@@ -916,8 +917,27 @@ async def generate_trend_image(
             raise RuntimeError(f"ComfyUI completed prompt {prompt_id} but returned no output image.")
 
         image_url = f"/api/trends/outputs/{output_filename}"
+        input_image_url = None
+        if saved_filenames:
+            try:
+                first_photo_path = os.path.join(upload_dir, saved_filenames[0])
+                if os.path.exists(first_photo_path):
+                    with open(first_photo_path, "rb") as f:
+                        input_bytes = f.read()
+                    input_image_url = await storage_service.upload_input_photo(
+                        image_bytes=input_bytes,
+                        base_filename=f"{job_id}.webp",
+                    )
+            except Exception as in_err:
+                print(f"[Storage] Input photo upload notice: {in_err}")
+
         try:
-            remaining_credits = await deduct_user_credit(job_id, selected_theme["id"], image_url_val=image_url)
+            remaining_credits = await deduct_user_credit(
+                job_id_val=job_id,
+                theme_id_val=selected_theme["id"],
+                image_url_val=image_url,
+                input_image_url_val=input_image_url,
+            )
         except Exception:
             revenue_integrity_anomalies.add(1, {
                 "anomaly_type": "gen_success_no_deduct",

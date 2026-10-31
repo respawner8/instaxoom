@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Optional, Tuple
 import aiofiles
-from PIL import Image
+from PIL import Image, ImageOps
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,10 @@ def create_webp_thumbnail(image_bytes: bytes, max_dim: int = 400, quality: int =
     Creates an optimized WebP thumbnail from image bytes.
     The longest dimension will not exceed max_dim.
     Quality 85 provides crisp visual quality at ~25-35 KB.
+    Applies EXIF transposition to preserve correct mobile photo orientation.
     """
     with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
         rgb_img = img.convert("RGB")
         rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         out_buf = io.BytesIO()
@@ -30,8 +32,10 @@ def create_optimized_input_photo(image_bytes: bytes, max_dim: int = 800, quality
     """
     Creates an optimized WebP copy of user input photo for preview and comparison in admin portal.
     Max dimension 800px ensures facial likeness is clearly visible while keeping payload lightweight (~40-60KB).
+    Applies EXIF transposition so mobile selfie uploads always display upright.
     """
     with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
         rgb_img = img.convert("RGB")
         rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         out_buf = io.BytesIO()
@@ -205,16 +209,22 @@ class StorageService:
 
     async def upload_input_photo(
         self,
-        image_bytes: bytes,
-        base_filename: str,
+        image_bytes: Optional[bytes] = None,
+        base_filename: str = "input.webp",
+        *,
+        photo_bytes: Optional[bytes] = None,
     ) -> str:
         """
         Saves user uploaded input photo as an optimized WebP for admin preview.
         Returns the public URL of the uploaded input image.
+        Accepts either image_bytes or photo_bytes keyword or positional arguments.
         """
+        data = image_bytes if image_bytes is not None else photo_bytes
+        if data is None:
+            raise ValueError("upload_input_photo requires non-empty image_bytes")
         name_root, _ = os.path.splitext(base_filename)
         input_filename = f"{name_root}_input.webp"
-        optimized_bytes = await asyncio.to_thread(create_optimized_input_photo, image_bytes)
+        optimized_bytes = await asyncio.to_thread(create_optimized_input_photo, data)
         return await self.upload_image(optimized_bytes, input_filename, content_type="image/webp")
 
     async def delete_portrait_assets(

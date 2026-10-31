@@ -1733,9 +1733,7 @@ export default function AdminPage() {
                     <button
                       onClick={() => {
                         if (genPage > 1) {
-                          const newPage = genPage - 1;
-                          setGenPage(newPage);
-                          loadGenerations(newPage, genPageSize, genSearchQuery);
+                          setGenPage((prev) => prev - 1);
                         }
                       }}
                       disabled={genPage <= 1 || isLoadingGenerations}
@@ -1756,10 +1754,7 @@ export default function AdminPage() {
                             <React.Fragment key={p}>
                               {showEllipsis && <span className="px-1 text-neutral-600 text-xs">...</span>}
                               <button
-                                onClick={() => {
-                                  setGenPage(p);
-                                  loadGenerations(p, genPageSize, genSearchQuery);
-                                }}
+                                onClick={() => setGenPage(p)}
                                 className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
                                   genPage === p
                                     ? "bg-cyan-500 text-black shadow-sm"
@@ -1776,9 +1771,7 @@ export default function AdminPage() {
                     <button
                       onClick={() => {
                         if (genPage < genTotalPages) {
-                          const newPage = genPage + 1;
-                          setGenPage(newPage);
-                          loadGenerations(newPage, genPageSize, genSearchQuery);
+                          setGenPage((prev) => prev + 1);
                         }
                       }}
                       disabled={genPage >= genTotalPages || isLoadingGenerations}
@@ -2030,8 +2023,14 @@ export default function AdminPage() {
 
         {/* Likeness Fidelity Inspection Lightbox Modal */}
         {inspectingGen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md">
-            <div className="relative w-full max-w-4xl bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl max-h-[94vh] overflow-y-auto space-y-4">
+          <div
+            onClick={() => setInspectingGen(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md cursor-pointer"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-4xl bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl max-h-[94vh] overflow-y-auto space-y-4 cursor-default"
+            >
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                 <div>

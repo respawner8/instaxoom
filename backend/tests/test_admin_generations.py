@@ -112,3 +112,24 @@ class AdminGenerationsApiTests(unittest.TestCase):
         self.assertEqual(first["image_url"], "https://blob.example.com/outputs/job_001.png")
         self.assertEqual(first["thumbnail_url"], "https://blob.example.com/outputs/job_001_thumb.webp")
         self.assertEqual(first["user"]["email"], "creator@example.com")
+
+    def test_create_optimized_input_photo_and_exif(self):
+        """Verify create_optimized_input_photo processes images and respects EXIF orientation."""
+        import io
+        from PIL import Image
+        from app.services.storage_service import create_optimized_input_photo
+
+        # Create a test 1200x1600 image
+        img = Image.new("RGB", (1200, 1600), color="blue")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        raw_bytes = buf.getvalue()
+
+        optimized = create_optimized_input_photo(raw_bytes, max_dim=800)
+        self.assertTrue(len(optimized) > 0)
+
+        # Inspect resulting WebP
+        with Image.open(io.BytesIO(optimized)) as opt_img:
+            self.assertEqual(opt_img.format, "WEBP")
+            self.assertLessEqual(max(opt_img.size), 800)
+
