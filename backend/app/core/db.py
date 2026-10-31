@@ -64,6 +64,7 @@ async def init_db():
         from sqlalchemy import text
         for query in [
             "ALTER TABLE generations ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;",
+            "ALTER TABLE generations ADD COLUMN IF NOT EXISTS input_image_url TEXT;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed BOOLEAN NOT NULL DEFAULT FALSE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_credits_claimed_at TIMESTAMPTZ;",
             "CREATE INDEX IF NOT EXISTS ix_site_visits_created_at ON site_visits (created_at);",
@@ -73,6 +74,23 @@ async def init_db():
                 await conn.execute(text(query))
             except Exception as e:
                 logger.warning("Schema migration notice (%s): %s", query, e)
+
+        # Synchronize admin roles for all configured ADMIN_EMAILS
+        admin_emails = settings.admin_emails_list
+        if admin_emails:
+            try:
+                from app.models.user import User
+                from sqlalchemy import update, func
+                sync_stmt = (
+                    update(User)
+                    .where(func.lower(User.email).in_(admin_emails), User.role != "admin")
+                    .values(role="admin")
+                )
+                res = await conn.execute(sync_stmt)
+                if res.rowcount:
+                    logger.info("Auto-synced %d users to admin role based on ADMIN_EMAILS.", res.rowcount)
+            except Exception as e:
+                logger.warning("Admin role sync notice: %s", e)
 
     # Seed default themes if theme_presets table is empty
     try:

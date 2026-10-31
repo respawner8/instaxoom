@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Optional, Tuple
 import aiofiles
-from PIL import Image
+from PIL import Image, ImageOps
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,13 +17,24 @@ def create_webp_thumbnail(image_bytes: bytes, max_dim: int = 400, quality: int =
     Creates an optimized WebP thumbnail from image bytes.
     The longest dimension will not exceed max_dim.
     Quality 85 provides crisp visual quality at ~25-35 KB.
+    Applies EXIF transposition to preserve correct mobile photo orientation.
     """
     with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
         rgb_img = img.convert("RGB")
         rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         out_buf = io.BytesIO()
         rgb_img.save(out_buf, format="WEBP", quality=quality, method=4)
         return out_buf.getvalue()
+
+
+def create_optimized_input_photo(image_bytes: bytes, max_dim: int = 800, quality: int = 85) -> bytes:
+    """
+    Creates an optimized WebP copy of user input photo for preview and comparison in admin portal.
+    Max dimension 800px ensures facial likeness is clearly visible while keeping payload lightweight (~40-60KB).
+    Applies EXIF transposition so mobile selfie uploads always display upright.
+    """
+    return create_webp_thumbnail(image_bytes, max_dim=max_dim, quality=quality)
 
 
 class StorageService:
@@ -190,13 +201,34 @@ class StorageService:
         )
         return master_url, thumb_url
 
+    async def upload_input_photo(
+        self,
+        image_bytes: Optional[bytes] = None,
+        base_filename: str = "input.webp",
+        *,
+        photo_bytes: Optional[bytes] = None,
+    ) -> str:
+        """
+        Saves user uploaded input photo as an optimized WebP for admin preview.
+        Returns the public URL of the uploaded input image.
+        Accepts either image_bytes or photo_bytes keyword or positional arguments.
+        """
+        data = image_bytes if image_bytes is not None else photo_bytes
+        if data is None:
+            raise ValueError("upload_input_photo requires non-empty image_bytes")
+        name_root, _ = os.path.splitext(base_filename)
+        input_filename = f"{name_root}_input.webp"
+        optimized_bytes = await asyncio.to_thread(create_optimized_input_photo, data)
+        return await self.upload_image(optimized_bytes, input_filename, content_type="image/webp")
+
     async def delete_portrait_assets(
         self,
         image_url: str,
         thumbnail_url: Optional[str] = None,
+        input_image_url: Optional[str] = None,
     ) -> None:
         """
-        Deletes the master image and thumbnail from Azure Blob Storage and local outputs directory.
+        Deletes the master image, thumbnail, and input photo from Azure Blob Storage and local outputs directory.
         """
         def _extract_filename(url: str) -> str:
             path = url.split("?")[0]
@@ -208,9 +240,13 @@ class StorageService:
             filenames_to_delete.add(master_fname)
             name_root, _ = os.path.splitext(master_fname)
             filenames_to_delete.add(f"{name_root}_thumb.webp")
+            filenames_to_delete.add(f"{name_root}_input.webp")
 
         if thumbnail_url:
             filenames_to_delete.add(_extract_filename(thumbnail_url))
+
+        if input_image_url:
+            filenames_to_delete.add(_extract_filename(input_image_url))
 
         # 1. Delete from Azure Blob Storage if configured
         container_client = self._init_azure_client()

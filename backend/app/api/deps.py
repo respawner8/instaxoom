@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.models.user import User
 
@@ -35,6 +36,14 @@ async def get_current_user_optional(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         return None
+
+    user_email = (user.email or "").strip().lower()
+    if user_email in settings.admin_emails_list and user.role != "admin":
+        user.role = "admin"
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
     return user
 
@@ -84,12 +93,22 @@ async def get_current_user(
             detail="User account is deactivated.",
         )
 
+    user_email = (user.email or "").strip().lower()
+    if user_email in settings.admin_emails_list and user.role != "admin":
+        user.role = "admin"
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+
     return user
 
 
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    """Enforces admin privileges: caller must have role == 'admin'."""
-    if current_user.role != "admin":
+    """Enforces admin privileges: caller must have role == 'admin' or email in ADMIN_EMAILS."""
+    current_email = (current_user.email or "").strip().lower()
+    is_admin = current_user.role == "admin" or current_email in settings.admin_emails_list
+    if not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin portal access denied. Admin privileges required.",

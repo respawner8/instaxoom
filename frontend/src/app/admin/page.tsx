@@ -31,6 +31,10 @@ import {
   TrendingUp,
   BarChart3,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  ExternalLink,
 } from "lucide-react";
 import { useAuth, User } from "@/context/AuthContext";
 
@@ -93,6 +97,36 @@ interface AdminThemeItem {
   updated_at: string;
 }
 
+interface AdminGenerationUser {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+}
+
+interface AdminGenerationItem {
+  id: string;
+  job_id: string;
+  user?: AdminGenerationUser;
+  theme_id: string;
+  theme_title: string;
+  prompt?: string;
+  aspect_ratio: string;
+  engine: string;
+  image_url: string;
+  thumbnail_url?: string;
+  input_image_url?: string;
+  created_at: string;
+}
+
+interface AdminGenerationsResponse {
+  items: AdminGenerationItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 
 export default function AdminPage() {
   const router = useRouter();
@@ -106,6 +140,17 @@ export default function AdminPage() {
   const [metricsData, setMetricsData] = useState<AdminMetricsOverview | null>(null);
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
+  // Generations & Likeness Lab states (with pagination)
+  const [generationsList, setGenerationsList] = useState<AdminGenerationItem[]>([]);
+  const [genTotal, setGenTotal] = useState<number>(0);
+  const [genPage, setGenPage] = useState<number>(1);
+  const [genPageSize, setGenPageSize] = useState<number>(10);
+  const [genTotalPages, setGenTotalPages] = useState<number>(1);
+  const [genSearchQuery, setGenSearchQuery] = useState<string>("");
+  const [isLoadingGenerations, setIsLoadingGenerations] = useState<boolean>(false);
+  const [inspectingGen, setInspectingGen] = useState<AdminGenerationItem | null>(null);
+  const [copiedGenPromptId, setCopiedGenPromptId] = useState<string | null>(null);
+
   // Form states
   const [assignEmail, setAssignEmail] = useState<string>("");
   const [assignCredits, setAssignCredits] = useState<number>(5);
@@ -117,7 +162,7 @@ export default function AdminPage() {
   } | null>(null);
 
   // Filter & tab states
-  const [activeTab, setActiveTab] = useState<"users" | "pending" | "transactions" | "themes" | "activity">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "pending" | "transactions" | "themes" | "activity" | "generations">("users");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [themeSearchQuery, setThemeSearchQuery] = useState<string>("");
 
@@ -143,6 +188,11 @@ export default function AdminPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+  const getFullImageUrl = (url?: string | null) => {
+    if (!url) return "";
+    return url.startsWith("http") ? url : `${apiUrl}${url}`;
+  };
+
   // Check auth and role
   useEffect(() => {
     if (!authLoading) {
@@ -160,12 +210,13 @@ export default function AdminPage() {
 
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [usersRes, pendingRes, txRes, themesRes, metricsRes] = await Promise.all([
+      const [usersRes, pendingRes, txRes, themesRes, metricsRes, genRes] = await Promise.all([
         fetch(`${apiUrl}/api/admin/users`, { headers }),
         fetch(`${apiUrl}/api/admin/pending-credits`, { headers }),
         fetch(`${apiUrl}/api/admin/transactions`, { headers }),
         fetch(`${apiUrl}/api/admin/themes`, { headers }),
         fetch(`${apiUrl}/api/admin/metrics/overview`, { headers }),
+        fetch(`${apiUrl}/api/admin/generations?page=1&page_size=${genPageSize}`, { headers }),
       ]);
 
       if (usersRes.ok) {
@@ -188,12 +239,59 @@ export default function AdminPage() {
         const data = await metricsRes.json();
         setMetricsData(data);
       }
+      if (genRes.ok) {
+        const data: AdminGenerationsResponse = await genRes.json();
+        setGenerationsList(data.items);
+        setGenTotal(data.total);
+        setGenPage(data.page);
+        setGenPageSize(data.page_size);
+        setGenTotalPages(data.total_pages);
+      }
     } catch (err) {
       console.error("Error loading admin data:", err);
     } finally {
       setIsLoadingData(false);
     }
   };
+
+  const loadGenerations = async (
+    page = genPage,
+    pageSize = genPageSize,
+    search = genSearchQuery
+  ) => {
+    if (!token) return;
+    setIsLoadingGenerations(true);
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+      });
+      if (search.trim()) {
+        params.append("search", search.trim());
+      }
+      const res = await fetch(`${apiUrl}/api/admin/generations?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: AdminGenerationsResponse = await res.json();
+        setGenerationsList(data.items);
+        setGenTotal(data.total);
+        setGenPage(data.page);
+        setGenPageSize(data.page_size);
+        setGenTotalPages(data.total_pages);
+      }
+    } catch (err) {
+      console.error("Error loading generations:", err);
+    } finally {
+      setIsLoadingGenerations(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "generations" && token) {
+      loadGenerations(genPage, genPageSize, genSearchQuery);
+    }
+  }, [activeTab, genPage, genPageSize]);
 
   const openCreateThemeModal = () => {
     setEditingTheme(null);
@@ -881,6 +979,18 @@ export default function AdminPage() {
                 <BarChart3 className="w-3.5 h-3.5 shrink-0" />
                 <span>Activity & Trends</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab("generations")}
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                  activeTab === "generations"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Generations ({genTotal})</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap w-full justify-between sm:justify-end">
@@ -894,6 +1004,48 @@ export default function AdminPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-full sm:w-60 focus:border-neutral-700"
                   />
+                </div>
+              )}
+
+              {activeTab === "generations" && (
+                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                  <div className="relative flex-1 sm:flex-initial">
+                    <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Filter user or prompt..."
+                      value={genSearchQuery}
+                      onChange={(e) => {
+                        setGenSearchQuery(e.target.value);
+                        setGenPage(1);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          loadGenerations(1, genPageSize, genSearchQuery);
+                        }
+                      }}
+                      className="pl-8 pr-3 py-1.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-100 placeholder-neutral-600 outline-none w-full sm:w-56 focus:border-neutral-700"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 bg-neutral-950 border border-neutral-800 rounded-lg p-1 text-xs">
+                    <span className="text-neutral-500 text-[11px] px-1.5">Per page:</span>
+                    {[5, 10, 20].map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => {
+                          setGenPageSize(size);
+                          setGenPage(1);
+                        }}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${
+                          genPageSize === size
+                            ? "bg-cyan-500 text-black font-bold"
+                            : "text-neutral-400 hover:text-white"
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1391,6 +1543,254 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* Tab 6: Generations & Likeness Lab */}
+          {activeTab === "generations" && (
+            <div className="space-y-6">
+              {/* Sub-header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-950/60 border border-neutral-800/80 rounded-2xl p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-200 flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-cyan-400" />
+                    Input Photo & Output Portrait Likeness Lab
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Review user input selfies alongside AI-generated portraits to inspect facial likeness and model fidelity.
+                  </p>
+                </div>
+                <div className="text-xs text-neutral-400 font-mono">
+                  {genTotal > 0 && (
+                    <span>
+                      Showing {((genPage - 1) * genPageSize) + 1}–{Math.min(genPage * genPageSize, genTotal)} of {genTotal}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {isLoadingGenerations ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                  {[...Array(genPageSize <= 5 ? 2 : 4)].map((_, i) => (
+                    <div key={i} className="animate-pulse bg-neutral-950/40 border border-neutral-800/80 rounded-2xl p-4 h-80" />
+                  ))}
+                </div>
+              ) : generationsList.length === 0 ? (
+                <div className="text-center py-16 bg-neutral-950/30 border border-neutral-800/60 rounded-2xl">
+                  <ImageIcon className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
+                  <p className="text-sm text-neutral-300 font-medium">No generations found</p>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    {genSearchQuery ? "Try refining your search filter." : "Generated portraits will appear here."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                  {generationsList.map((gen) => (
+                    <div
+                      key={gen.id}
+                      className="bg-neutral-950/60 border border-neutral-800/90 rounded-2xl overflow-hidden shadow-lg hover:border-neutral-700 transition flex flex-col justify-between"
+                    >
+                      {/* Card Header: User & Theme Info */}
+                      <div className="p-3.5 sm:p-4 border-b border-neutral-800/80 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {gen.user?.avatar_url ? (
+                            <img
+                              src={gen.user.avatar_url}
+                              alt={gen.user.name || gen.user.email}
+                              className="w-7 h-7 rounded-full object-cover shrink-0 border border-neutral-700"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-300 shrink-0">
+                              {(gen.user?.name || gen.user?.email || "U")[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-neutral-200 truncate">
+                              {gen.user?.name || gen.user?.email.split("@")[0]}
+                            </p>
+                            <p className="text-[10px] text-neutral-500 truncate">{gen.user?.email}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/15 border border-rose-500/30 text-rose-300">
+                            {gen.theme_title}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {gen.created_at ? new Date(gen.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Dual Side-by-Side Images */}
+                      <div className="p-3.5 sm:p-4 grid grid-cols-2 gap-3 sm:gap-4 bg-neutral-950/40">
+                        {/* Input Photo */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                              Input Photo
+                            </span>
+                          </div>
+                          <div
+                            onClick={() => setInspectingGen(gen)}
+                            className="relative aspect-[4/5] bg-neutral-900 rounded-xl overflow-hidden border border-neutral-800 cursor-pointer group"
+                          >
+                            {gen.input_image_url ? (
+                              <img
+                                src={getFullImageUrl(gen.input_image_url)}
+                                alt="User input photo"
+                                className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center text-neutral-600">
+                                <ImageIcon className="w-6 h-6 mb-1 opacity-50" />
+                                <span className="text-[10px]">Pre-beta image<br />(not recorded)</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <span className="text-[10px] font-bold text-white bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md flex items-center gap-1">
+                                <Maximize2 className="w-3 h-3" /> Zoom
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Generated Output */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 bg-rose-400/10 px-2 py-0.5 rounded border border-rose-400/20">
+                              Generated Portrait
+                            </span>
+                          </div>
+                          <div
+                            onClick={() => setInspectingGen(gen)}
+                            className="relative aspect-[4/5] bg-neutral-900 rounded-xl overflow-hidden border border-neutral-800 cursor-pointer group"
+                          >
+                            <img
+                              src={getFullImageUrl(gen.thumbnail_url || gen.image_url)}
+                              alt="Generated portrait"
+                              className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                              <span className="text-[10px] font-bold text-white bg-black/60 backdrop-blur-sm px-2 py-1 rounded-md flex items-center gap-1">
+                                <Maximize2 className="w-3 h-3" /> Zoom
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Prompt & Card Footer */}
+                      <div className="p-3 sm:p-4 border-t border-neutral-800/80 bg-neutral-900/40 space-y-2">
+                        {gen.prompt && (
+                          <p className="text-[11px] text-neutral-400 line-clamp-2 italic font-serif">
+                            &ldquo;{gen.prompt}&rdquo;
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[10px] text-neutral-500 font-mono">
+                            {gen.engine} • {gen.aspect_ratio}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {gen.prompt && (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(gen.prompt || "");
+                                  setCopiedGenPromptId(gen.id);
+                                  setTimeout(() => setCopiedGenPromptId(null), 2000);
+                                }}
+                                className="text-[11px] text-neutral-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition"
+                              >
+                                {copiedGenPromptId === gen.id ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                    <span className="text-emerald-400 text-[10px]">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3" />
+                                    <span className="text-[10px]">Prompt</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setInspectingGen(gen)}
+                              className="text-[11px] font-bold text-cyan-300 hover:text-cyan-200 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 hover:bg-cyan-500/20 transition"
+                            >
+                              <Eye className="w-3 h-3" />
+                              Inspect Likeness
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {genTotalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-neutral-800/80">
+                  <div className="text-xs text-neutral-400">
+                    Page <span className="font-bold text-white">{genPage}</span> of{" "}
+                    <span className="font-bold text-white">{genTotalPages}</span> ({genTotal} total)
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (genPage > 1) {
+                          setGenPage((prev) => prev - 1);
+                        }
+                      }}
+                      disabled={genPage <= 1 || isLoadingGenerations}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-950 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      Previous
+                    </button>
+
+                    {/* Direct Page Numbers */}
+                    <div className="hidden sm:flex items-center gap-1">
+                      {Array.from({ length: genTotalPages }, (_, i) => i + 1)
+                        .filter((p) => p === 1 || p === genTotalPages || Math.abs(p - genPage) <= 1)
+                        .map((p, idx, arr) => {
+                          const prevPage = arr[idx - 1];
+                          const showEllipsis = prevPage && p - prevPage > 1;
+                          return (
+                            <React.Fragment key={p}>
+                              {showEllipsis && <span className="px-1 text-neutral-600 text-xs">...</span>}
+                              <button
+                                onClick={() => setGenPage(p)}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
+                                  genPage === p
+                                    ? "bg-cyan-500 text-black shadow-sm"
+                                    : "bg-neutral-950 border border-neutral-800 text-neutral-400 hover:text-white"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (genPage < genTotalPages) {
+                          setGenPage((prev) => prev + 1);
+                        }
+                      }}
+                      disabled={genPage >= genTotalPages || isLoadingGenerations}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-950 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      Next
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
 
         {/* Create / Edit Theme Modal */}
@@ -1622,6 +2022,133 @@ export default function AdminPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Likeness Fidelity Inspection Lightbox Modal */}
+        {inspectingGen && (
+          <div
+            onClick={() => setInspectingGen(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md cursor-pointer"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-4xl bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl max-h-[94vh] overflow-y-auto space-y-4 cursor-default"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-cyan-400" />
+                    Likeness Fidelity Comparison
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    {inspectingGen.user?.name || inspectingGen.user?.email} • {inspectingGen.theme_title}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setInspectingGen(null)}
+                  className="p-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Side by Side Large Comparison */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Input Photo */}
+                <div className="space-y-2 bg-neutral-950/70 p-3 rounded-2xl border border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                      Original Input Photo
+                    </span>
+                    {inspectingGen.input_image_url && (
+                      <a
+                        href={getFullImageUrl(inspectingGen.input_image_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-neutral-400 hover:text-white flex items-center gap-1 transition"
+                      >
+                        Full Res <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                  <div className="relative aspect-[4/5] bg-black rounded-xl overflow-hidden border border-neutral-800 flex items-center justify-center">
+                    {inspectingGen.input_image_url ? (
+                      <img
+                        src={getFullImageUrl(inspectingGen.input_image_url)}
+                        alt="User input photo full"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="text-center p-4 text-neutral-500">
+                        <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                        <span className="text-xs">Pre-beta attempt: input photo was not recorded.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Output Portrait */}
+                <div className="space-y-2 bg-neutral-950/70 p-3 rounded-2xl border border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-400 bg-rose-400/10 px-2 py-0.5 rounded border border-rose-400/20">
+                      Generated AI Portrait
+                    </span>
+                    <a
+                      href={getFullImageUrl(inspectingGen.image_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-neutral-400 hover:text-white flex items-center gap-1 transition"
+                    >
+                      Full Res <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <div className="relative aspect-[4/5] bg-black rounded-xl overflow-hidden border border-neutral-800 flex items-center justify-center">
+                    <img
+                      src={getFullImageUrl(inspectingGen.image_url)}
+                      alt="Generated portrait full"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Prompt & Metadata Details */}
+              <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300">Prompt Used</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(inspectingGen.prompt || "");
+                      setCopiedGenPromptId(inspectingGen.id);
+                      setTimeout(() => setCopiedGenPromptId(null), 2000);
+                    }}
+                    className="text-xs text-neutral-400 hover:text-white flex items-center gap-1"
+                  >
+                    {copiedGenPromptId === inspectingGen.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-neutral-300 font-mono bg-neutral-900 p-2.5 rounded border border-neutral-800 break-words">
+                  {inspectingGen.prompt || "No prompt stored"}
+                </p>
+                <div className="flex items-center gap-4 text-[11px] text-neutral-500 pt-1 flex-wrap">
+                  <span>Engine: <strong className="text-neutral-300">{inspectingGen.engine}</strong></span>
+                  <span>Aspect: <strong className="text-neutral-300">{inspectingGen.aspect_ratio}</strong></span>
+                  <span>Job ID: <strong className="text-neutral-300 font-mono">{inspectingGen.job_id}</strong></span>
+                </div>
+              </div>
             </div>
           </div>
         )}

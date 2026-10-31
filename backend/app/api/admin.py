@@ -18,6 +18,7 @@ from app.models.user import (
     Generation,
     SiteVisit,
 )
+from app.core.config import settings
 from app.api.deps import get_admin_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal"])
@@ -101,6 +102,36 @@ class AdminMetricsOverviewResponse(BaseModel):
     total_images_generated: int
     images_generated_today: int
     daily_trends: List[DailyMetricTrend] = []
+
+
+class AdminGenerationUser(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class AdminGenerationItem(BaseModel):
+    id: str
+    job_id: str
+    user: Optional[AdminGenerationUser] = None
+    theme_id: str
+    theme_title: str
+    prompt: Optional[str] = None
+    aspect_ratio: str = "4:5"
+    engine: str = "azure"
+    image_url: str
+    thumbnail_url: Optional[str] = None
+    input_image_url: Optional[str] = None
+    created_at: str
+
+
+class AdminGenerationsResponse(BaseModel):
+    items: List[AdminGenerationItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 @router.get("/metrics/overview", response_model=AdminMetricsOverviewResponse)
@@ -295,6 +326,7 @@ async def list_users(
     )
     res = await db.execute(stmt)
     users = res.scalars().all()
+    admin_emails_set = set(settings.admin_emails_list)
 
     return [
         {
@@ -302,7 +334,7 @@ async def list_users(
             "email": u.email,
             "name": u.name or u.email.split("@")[0],
             "avatar_url": u.avatar_url,
-            "role": u.role,
+            "role": "admin" if (u.role == "admin" or (u.email or "").strip().lower() in admin_emails_set) else u.role,
             "credits": u.credit.balance if u.credit else 0,
             "free_credits_claimed": bool(u.free_credits_claimed),
             "created_at": u.created_at.isoformat() if u.created_at else "",
@@ -365,6 +397,103 @@ async def list_recent_transactions(
         }
         for tx, email in rows
     ]
+
+
+@router.get("/generations", response_model=AdminGenerationsResponse)
+async def list_generations(
+    page: int = 1,
+    page_size: int = 10,
+    search: Optional[str] = None,
+    theme_id: Optional[str] = None,
+    admin_user: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lists paginated generated portraits along with input preview photos for beta likeness auditing.
+    Supports pagination (e.g. 5, 10, 20 items) and filtering by user email, prompt, or theme_id.
+    """
+    import math
+    from sqlalchemy import and_, or_
+
+    # Bound page and page_size defensively
+    page = max(1, page)
+    page_size = max(1, min(page_size, 50))
+
+    filters = []
+    if theme_id and theme_id.strip():
+        filters.append(Generation.theme_id == theme_id.strip())
+
+    needs_user_join = False
+    if search and search.strip():
+        s = f"%{search.strip().lower()}%"
+        needs_user_join = True
+        filters.append(
+            or_(
+                func.lower(User.email).like(s),
+                func.lower(User.name).like(s),
+                func.lower(Generation.prompt).like(s),
+                func.lower(Generation.theme_title).like(s),
+            )
+        )
+
+    # 1. Total Count Query
+    count_stmt = select(func.count(Generation.id)).select_from(Generation)
+    if needs_user_join:
+        count_stmt = count_stmt.join(Generation.user)
+    if filters:
+        count_stmt = count_stmt.where(and_(*filters))
+
+    count_res = await db.execute(count_stmt)
+    total = count_res.scalar() or 0
+
+    # 2. Paginated Data Query
+    stmt = (
+        select(Generation)
+        .options(selectinload(Generation.user))
+        .order_by(desc(Generation.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    if needs_user_join:
+        stmt = stmt.join(Generation.user)
+    if filters:
+        stmt = stmt.where(and_(*filters))
+
+    res = await db.execute(stmt)
+    generations = res.scalars().all()
+
+    items = [
+        AdminGenerationItem(
+            id=str(g.id),
+            job_id=g.job_id,
+            user=AdminGenerationUser(
+                id=str(g.user.id),
+                email=g.user.email,
+                name=g.user.name or g.user.email.split("@")[0],
+                avatar_url=g.user.avatar_url,
+            ) if g.user else None,
+            theme_id=g.theme_id,
+            theme_title=g.theme_title or g.theme_id,
+            prompt=g.prompt,
+            aspect_ratio=g.aspect_ratio or "4:5",
+            engine=g.engine or "azure",
+            image_url=g.image_url,
+            thumbnail_url=g.thumbnail_url,
+            input_image_url=g.input_image_url,
+            created_at=g.created_at.isoformat() if g.created_at else "",
+        )
+        for g in generations
+    ]
+
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+
+    return AdminGenerationsResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/themes")

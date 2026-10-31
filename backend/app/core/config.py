@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import List, Literal, Optional
+from pathlib import Path
 from pydantic import Field
 
 
@@ -126,7 +127,10 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
     class Config:
-        env_file = ".env"
+        env_file = [
+            str(Path(__file__).resolve().parent.parent.parent / ".env"),
+            ".env",
+        ]
         extra = "ignore"
 
 
