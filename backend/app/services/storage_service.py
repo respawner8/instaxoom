@@ -34,13 +34,7 @@ def create_optimized_input_photo(image_bytes: bytes, max_dim: int = 800, quality
     Max dimension 800px ensures facial likeness is clearly visible while keeping payload lightweight (~40-60KB).
     Applies EXIF transposition so mobile selfie uploads always display upright.
     """
-    with Image.open(io.BytesIO(image_bytes)) as img:
-        img = ImageOps.exif_transpose(img)
-        rgb_img = img.convert("RGB")
-        rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-        out_buf = io.BytesIO()
-        rgb_img.save(out_buf, format="WEBP", quality=quality, method=4)
-        return out_buf.getvalue()
+    return create_webp_thumbnail(image_bytes, max_dim=max_dim, quality=quality)
 
 
 class StorageService:
@@ -246,6 +240,7 @@ class StorageService:
             filenames_to_delete.add(master_fname)
             name_root, _ = os.path.splitext(master_fname)
             filenames_to_delete.add(f"{name_root}_thumb.webp")
+            filenames_to_delete.add(f"{name_root}_input.webp")
 
         if thumbnail_url:
             filenames_to_delete.add(_extract_filename(thumbnail_url))

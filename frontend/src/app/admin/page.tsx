@@ -188,6 +188,11 @@ export default function AdminPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+  const getFullImageUrl = (url?: string | null) => {
+    if (!url) return "";
+    return url.startsWith("http") ? url : `${apiUrl}${url}`;
+  };
+
   // Check auth and role
   useEffect(() => {
     if (!authLoading) {
@@ -1629,7 +1634,7 @@ export default function AdminPage() {
                           >
                             {gen.input_image_url ? (
                               <img
-                                src={gen.input_image_url}
+                                src={getFullImageUrl(gen.input_image_url)}
                                 alt="User input photo"
                                 className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                               />
@@ -1659,7 +1664,7 @@ export default function AdminPage() {
                             className="relative aspect-[4/5] bg-neutral-900 rounded-xl overflow-hidden border border-neutral-800 cursor-pointer group"
                           >
                             <img
-                              src={gen.thumbnail_url || gen.image_url}
+                              src={getFullImageUrl(gen.thumbnail_url || gen.image_url)}
                               alt="Generated portrait"
                               className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                             />
@@ -1676,7 +1681,7 @@ export default function AdminPage() {
                       <div className="p-3 sm:p-4 border-t border-neutral-800/80 bg-neutral-900/40 space-y-2">
                         {gen.prompt && (
                           <p className="text-[11px] text-neutral-400 line-clamp-2 italic font-serif">
-                            "{gen.prompt}"
+                            &ldquo;{gen.prompt}&rdquo;
                           </p>
                         )}
                         <div className="flex items-center justify-between pt-1">
@@ -2060,7 +2065,7 @@ export default function AdminPage() {
                     </span>
                     {inspectingGen.input_image_url && (
                       <a
-                        href={inspectingGen.input_image_url}
+                        href={getFullImageUrl(inspectingGen.input_image_url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[11px] text-neutral-400 hover:text-white flex items-center gap-1 transition"
@@ -2072,7 +2077,7 @@ export default function AdminPage() {
                   <div className="relative aspect-[4/5] bg-black rounded-xl overflow-hidden border border-neutral-800 flex items-center justify-center">
                     {inspectingGen.input_image_url ? (
                       <img
-                        src={inspectingGen.input_image_url}
+                        src={getFullImageUrl(inspectingGen.input_image_url)}
                         alt="User input photo full"
                         className="w-full h-full object-contain"
                       />
@@ -2092,7 +2097,7 @@ export default function AdminPage() {
                       Generated AI Portrait
                     </span>
                     <a
-                      href={inspectingGen.image_url}
+                      href={getFullImageUrl(inspectingGen.image_url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] text-neutral-400 hover:text-white flex items-center gap-1 transition"
@@ -2102,7 +2107,7 @@ export default function AdminPage() {
                   </div>
                   <div className="relative aspect-[4/5] bg-black rounded-xl overflow-hidden border border-neutral-800 flex items-center justify-center">
                     <img
-                      src={inspectingGen.image_url}
+                      src={getFullImageUrl(inspectingGen.image_url)}
                       alt="Generated portrait full"
                       className="w-full h-full object-contain"
                     />

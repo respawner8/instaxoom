@@ -922,8 +922,8 @@ async def generate_trend_image(
             try:
                 first_photo_path = os.path.join(upload_dir, saved_filenames[0])
                 if os.path.exists(first_photo_path):
-                    with open(first_photo_path, "rb") as f:
-                        input_bytes = f.read()
+                    async with aiofiles.open(first_photo_path, "rb") as f:
+                        input_bytes = await f.read()
                     input_image_url = await storage_service.upload_input_photo(
                         image_bytes=input_bytes,
                         base_filename=f"{job_id}.webp",
