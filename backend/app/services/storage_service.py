@@ -26,6 +26,19 @@ def create_webp_thumbnail(image_bytes: bytes, max_dim: int = 400, quality: int =
         return out_buf.getvalue()
 
 
+def create_optimized_input_photo(image_bytes: bytes, max_dim: int = 800, quality: int = 85) -> bytes:
+    """
+    Creates an optimized WebP copy of user input photo for preview and comparison in admin portal.
+    Max dimension 800px ensures facial likeness is clearly visible while keeping payload lightweight (~40-60KB).
+    """
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        rgb_img = img.convert("RGB")
+        rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        out_buf = io.BytesIO()
+        rgb_img.save(out_buf, format="WEBP", quality=quality, method=4)
+        return out_buf.getvalue()
+
+
 class StorageService:
     """
     Unified Storage Service for instaXoom.
@@ -190,13 +203,28 @@ class StorageService:
         )
         return master_url, thumb_url
 
+    async def upload_input_photo(
+        self,
+        image_bytes: bytes,
+        base_filename: str,
+    ) -> str:
+        """
+        Saves user uploaded input photo as an optimized WebP for admin preview.
+        Returns the public URL of the uploaded input image.
+        """
+        name_root, _ = os.path.splitext(base_filename)
+        input_filename = f"{name_root}_input.webp"
+        optimized_bytes = await asyncio.to_thread(create_optimized_input_photo, image_bytes)
+        return await self.upload_image(optimized_bytes, input_filename, content_type="image/webp")
+
     async def delete_portrait_assets(
         self,
         image_url: str,
         thumbnail_url: Optional[str] = None,
+        input_image_url: Optional[str] = None,
     ) -> None:
         """
-        Deletes the master image and thumbnail from Azure Blob Storage and local outputs directory.
+        Deletes the master image, thumbnail, and input photo from Azure Blob Storage and local outputs directory.
         """
         def _extract_filename(url: str) -> str:
             path = url.split("?")[0]
@@ -211,6 +239,9 @@ class StorageService:
 
         if thumbnail_url:
             filenames_to_delete.add(_extract_filename(thumbnail_url))
+
+        if input_image_url:
+            filenames_to_delete.add(_extract_filename(input_image_url))
 
         # 1. Delete from Azure Blob Storage if configured
         container_client = self._init_azure_client()

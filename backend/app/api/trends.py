@@ -540,6 +540,7 @@ async def generate_trend_image(
         theme_id_val: str,
         image_url_val: str = "",
         thumbnail_url_val: Optional[str] = None,
+        input_image_url_val: Optional[str] = None,
     ) -> int:
         with tracer.start_as_current_span("credit.deduct") as span:
             span.set_attribute("user.id", str(current_user.id))
@@ -582,6 +583,7 @@ async def generate_trend_image(
                         engine=active_engine,
                         image_url=image_url_val,
                         thumbnail_url=thumbnail_url_val,
+                        input_image_url=input_image_url_val,
                         storage_provider=storage_prov,
                     )
                     session.add(gen_rec)
@@ -642,6 +644,16 @@ async def generate_trend_image(
                                 job_id=job_id,
                                 on_status=on_status_update,
                             )
+                            # Upload input photo preview asynchronously for admin comparison
+                            input_image_url = None
+                            try:
+                                input_image_url = await storage_service.upload_input_photo(
+                                    photo_bytes=photo_bytes,
+                                    base_filename=f"{job_id}.webp",
+                                )
+                            except Exception as in_err:
+                                print(f"[Storage] Input photo upload notice: {in_err}")
+
                             # Generation succeeded -> Deduct credit & save to gallery
                             try:
                                 remaining_credits = await deduct_user_credit(
@@ -649,6 +661,7 @@ async def generate_trend_image(
                                     theme_id_val=selected_theme["id"],
                                     image_url_val=image_url,
                                     thumbnail_url_val=thumbnail_url,
+                                    input_image_url_val=input_image_url,
                                 )
                             except Exception:
                                 revenue_integrity_anomalies.add(1, {
@@ -743,12 +756,22 @@ async def generate_trend_image(
                     aspect_ratio=aspect_ratio,
                     job_id=job_id,
                 )
+                input_image_url = None
+                try:
+                    input_image_url = await storage_service.upload_input_photo(
+                        photo_bytes=photo_bytes,
+                        base_filename=f"{job_id}.webp",
+                    )
+                except Exception as in_err:
+                    print(f"[Storage] Input photo upload notice: {in_err}")
+
                 try:
                     remaining_credits = await deduct_user_credit(
                         job_id_val=job_id,
                         theme_id_val=selected_theme["id"],
                         image_url_val=image_url,
                         thumbnail_url_val=thumbnail_url,
+                        input_image_url_val=input_image_url,
                     )
                 except Exception:
                     revenue_integrity_anomalies.add(1, {
@@ -1006,6 +1029,7 @@ async def delete_my_generation(
             await storage_service.delete_portrait_assets(
                 image_url=generation.image_url,
                 thumbnail_url=generation.thumbnail_url,
+                input_image_url=generation.input_image_url,
             )
         except Exception as storage_err:
             print(f"[Storage] Failed to delete storage assets for {generation_id}: {storage_err}")
